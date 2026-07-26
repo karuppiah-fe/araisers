@@ -123,6 +123,11 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _sendMqttCommand(String motorName, bool turnOn) {
+    if (turnOn && !_isVoltageValid) {
+      debugPrint('Automated start rejected: Voltage out of range ($_faultMessage)');
+      return;
+    }
+
     final MqttServerClient? client = _mqttClient;
     if (client == null ||
         client.connectionStatus?.state != MqttConnectionState.connected) {
@@ -577,6 +582,24 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  bool get _isVoltageValid {
+    if (_phaseFailure) return false;
+    if (_faultMessage != 'No fault' &&
+        !_faultMessage.toLowerCase().contains('no fault')) {
+      return false;
+    }
+
+    if (!_isDeviceOnline) return false;
+
+    final bool rValid = _rVoltage >= 150.0 && _rVoltage <= 280.0;
+    final bool yValid =
+        _yVoltage == 0.0 || (_yVoltage >= 150.0 && _yVoltage <= 280.0);
+    final bool bValid =
+        _bVoltage == 0.0 || (_bVoltage >= 150.0 && _bVoltage <= 280.0);
+
+    return rValid && yValid && bValid;
+  }
+
   Widget _buildDashboardView(AppLanguage activeLanguage) {
     return SafeArea(
       child: RefreshIndicator(
@@ -597,6 +620,8 @@ class _HomePageState extends ConsumerState<HomePage> {
               MotorControllerWidget(
                 mqttClient: _mqttClient,
                 baseTopic: _baseTopic,
+                isVoltageValid: _isVoltageValid,
+                faultMessage: _faultMessage,
                 onLogEvent: (motorName, action, trigger) {
                   ref.read(dataLogProvider.notifier).addLog(
                         motorName: motorName,

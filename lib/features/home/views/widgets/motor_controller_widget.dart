@@ -10,12 +10,16 @@ class MotorControllerWidget extends StatefulWidget {
   const MotorControllerWidget({
     required this.mqttClient,
     required this.baseTopic,
+    this.isVoltageValid = true,
+    this.faultMessage = '',
     this.onLogEvent,
     super.key,
   });
 
   final MqttServerClient? mqttClient;
   final String baseTopic;
+  final bool isVoltageValid;
+  final String faultMessage;
   final Function(String motorName, String action, String trigger)? onLogEvent;
 
   @override
@@ -117,6 +121,14 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
 
   Future<void> _toggleMotor1Toggle() async {
     final bool nextState = !_motor1On;
+    if (nextState && !widget.isVoltageValid) {
+      _showSnackBar(
+        'Cannot start Motor 1: Voltage out of valid range (150V - 280V)',
+      );
+      setState(() => _motor1On = false);
+      return;
+    }
+
     final String command = nextState ? 'ON' : 'OFF';
 
     await _publishMqttMessage(_motor1CommandTopic, command);
@@ -132,6 +144,14 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
 
   Future<void> _toggleMotor2Toggle() async {
     final bool nextState = !_motor2On;
+    if (nextState && !widget.isVoltageValid) {
+      _showSnackBar(
+        'Cannot start Motor 2: Voltage out of valid range (150V - 280V)',
+      );
+      setState(() => _motor2On = false);
+      return;
+    }
+
     final String command = nextState ? 'ON' : 'OFF';
 
     await _publishMqttMessage(_motor2CommandTopic, command);
@@ -146,6 +166,14 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
   }
 
   Future<void> _sendMotor1Pulse(String command) async {
+    if (command == 'START' && !widget.isVoltageValid) {
+      _showSnackBar(
+        'Cannot start Motor 1: Voltage out of valid range (150V - 280V)',
+      );
+      setState(() => _motor1On = false);
+      return;
+    }
+
     setState(() {
       _motor1PulseActive = true;
     });
@@ -164,6 +192,14 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
   }
 
   Future<void> _sendMotor2Pulse(String command) async {
+    if (command == 'START' && !widget.isVoltageValid) {
+      _showSnackBar(
+        'Cannot start Motor 2: Voltage out of valid range (150V - 280V)',
+      );
+      setState(() => _motor2On = false);
+      return;
+    }
+
     setState(() {
       _motor2PulseActive = true;
     });

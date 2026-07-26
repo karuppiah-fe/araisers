@@ -10,11 +10,13 @@ class MotorControllerWidget extends StatefulWidget {
   const MotorControllerWidget({
     required this.mqttClient,
     required this.baseTopic,
+    this.onLogEvent,
     super.key,
   });
 
   final MqttServerClient? mqttClient;
   final String baseTopic;
+  final Function(String motorName, String action, String trigger)? onLogEvent;
 
   @override
   State<MotorControllerWidget> createState() => _MotorControllerWidgetState();
@@ -118,6 +120,7 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
     final String command = nextState ? 'ON' : 'OFF';
 
     await _publishMqttMessage(_motor1CommandTopic, command);
+    widget.onLogEvent?.call('Motor 1', command, 'Manual');
 
     if (!mounted) return;
 
@@ -132,6 +135,7 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
     final String command = nextState ? 'ON' : 'OFF';
 
     await _publishMqttMessage(_motor2CommandTopic, command);
+    widget.onLogEvent?.call('Motor 2', command, 'Manual');
 
     if (!mounted) return;
 
@@ -147,6 +151,7 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
     });
 
     await _publishMqttMessage(_motor1CommandTopic, command);
+    widget.onLogEvent?.call('Motor 1', command == 'START' ? 'ON' : 'OFF', 'Manual');
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
@@ -164,6 +169,7 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
     });
 
     await _publishMqttMessage(_motor2CommandTopic, command);
+    widget.onLogEvent?.call('Motor 2', command == 'START' ? 'ON' : 'OFF', 'Manual');
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
 

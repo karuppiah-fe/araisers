@@ -3,9 +3,15 @@ import 'dart:convert';
 
 import 'package:arisers/core/theme/app_colors.dart';
 import 'package:arisers/core/utils/ui_helpers.dart';
-import 'package:arisers/features/auth/providers/session_provider.dart';
-import 'package:arisers/features/auth/views/first_page.dart';
+import 'package:arisers/features/home/providers/cyclic_timer_provider.dart';
+import 'package:arisers/features/home/providers/datalog_provider.dart';
+import 'package:arisers/features/home/providers/scheduler_provider.dart';
+import 'package:arisers/features/home/views/widgets/cyclic_timer_view.dart';
+import 'package:arisers/features/home/views/widgets/datalog_view.dart';
 import 'package:arisers/features/home/views/widgets/motor_controller_widget.dart';
+import 'package:arisers/features/home/views/widgets/schedulers_view.dart';
+import 'package:arisers/features/home/views/widgets/settings_bottom_sheet.dart';
+import 'package:arisers/features/localization/providers/words_provider.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +34,8 @@ class _HomePageState extends ConsumerState<HomePage> {
   ];
   static const int mqttPort = 1883;
 
+  int _selectedTabIndex = 0;
+
   // MQTT OBJECTS
   MqttServerClient? _mqttClient;
   StreamSubscription<List<MqttReceivedMessage<MqttMessage?>>>?
@@ -44,7 +52,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   // DEVICE DETAILS FROM HIVE
   String _userKey = '';
   String _deviceName = '';
-  String _controllerId = 'controller01';
 
   String _baseTopic = '';
   String _electricalTopic = '';
@@ -72,6 +79,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   void initState() {
     super.initState();
     _initializeApplication();
+    _setupAutomationHandlers();
   }
 
   @override
@@ -80,6 +88,34 @@ class _HomePageState extends ConsumerState<HomePage> {
     _mqttSubscription?.cancel();
     _mqttClient?.disconnect();
     super.dispose();
+  }
+
+  void _setupAutomationHandlers() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(schedulerProvider.notifier).setCommandHandler(_sendMqttCommand);
+      ref
+          .read(cyclicTimerProvider.notifier)
+          .setCommandHandler(_sendMqttCommand);
+    });
+  }
+
+  void _sendMqttCommand(String motorName, bool turnOn) {
+    final MqttServerClient? client = _mqttClient;
+    if (client == null ||
+        client.connectionStatus?.state != MqttConnectionState.connected) {
+      return;
+    }
+
+    final String topic = (motorName == 'Motor 1')
+        ? '$_baseTopic/command/motor1'
+        : '$_baseTopic/command/motor2';
+
+    final String command = turnOn ? 'ON' : 'OFF';
+    final MqttClientPayloadBuilder builder = MqttClientPayloadBuilder();
+    builder.addString(command);
+
+    client.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!);
+    debugPrint('Automated Command Sent [$topic]: $command');
   }
 
   Future<void> _initializeApplication() async {
@@ -114,7 +150,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _loadDeviceInformation() async {
-    final Box<dynamic> sessionBox = Hive.box(SessionNotifier.boxName);
+    final Box<dynamic> sessionBox = Hive.box('sessionBox');
 
     _userKey = sessionBox.get('userKey', defaultValue: '').toString().trim();
 
@@ -139,109 +175,30 @@ class _HomePageState extends ConsumerState<HomePage> {
             storedDeviceName = name;
             await sessionBox.put('deviceName', name);
             await sessionBox.put('deviceConfigured', true);
-            if (devData['wifiSsid'] != null) {
-              await sessionBox.put('wifiSsid', devData['wifiSsid'].toString());
-            }
-            if (devData['phase'] != null) {
-              await sessionBox.put('phase', devData['phase']);
-            }
-          }
-        }
-
-        if (storedDeviceName.isEmpty) {
-          final DatabaseReference arisersRef = FirebaseDatabase.instance.ref(
-            'arisers',
-          );
-          final DataSnapshot arisersSnapshot = await arisersRef.get();
-
-          if (arisersSnapshot.exists && arisersSnapshot.value is Map) {
-            final Map<dynamic, dynamic> usersMap = Map<dynamic, dynamic>.from(
-              arisersSnapshot.value as Map,
-            );
-
-            for (final entry in usersMap.entries) {
-              final Object? userVal = entry.value;
-              if (userVal is! Map) continue;
-
-              final Map<dynamic, dynamic> userMap = Map<dynamic, dynamic>.from(
-                userVal,
-              );
-              final Object? devInfoVal = userMap['deviceInfo'];
-
-              if (devInfoVal is Map) {
-                final Map<String, dynamic> devInfo = Map<String, dynamic>.from(
-                  devInfoVal,
-                );
-                final String name =
-                    devInfo['deviceName']?.toString().trim() ?? '';
-                final bool configured = devInfo['configured'] == true;
-
-                if (configured && name.isNotEmpty) {
-                  storedDeviceName = name;
-                  await sessionBox.put('deviceName', name);
-                  await sessionBox.put('deviceConfigured', true);
-                  if (devInfo['wifiSsid'] != null) {
-                    await sessionBox.put(
-                      'wifiSsid',
-                      devInfo['wifiSsid'].toString(),
-                    );
-                  }
-                  if (devInfo['phase'] != null) {
-                    await sessionBox.put('phase', devInfo['phase']);
-                  }
-
-                  await deviceRef.update({
-                    'deviceName': name,
-                    'wifiSsid': devInfo['wifiSsid'] ?? '',
-                    'phase': devInfo['phase'] ?? 1,
-                    'bluetoothName': devInfo['bluetoothName'] ?? 'arisers',
-                    'bluetoothType': devInfo['bluetoothType'] ?? 'classic',
-                    'configured': true,
-                    'updatedAt': ServerValue.timestamp,
-                  });
-                  break;
-                }
-              }
-            }
           }
         }
       } catch (e) {
-        debugPrint('Error syncing device information in Home: $e');
+        debugPrint('Firebase fetch error: $e');
       }
     }
 
-    final String storedControllerId = sessionBox
-        .get('controllerId', defaultValue: 'controller01')
-        .toString();
+    if (storedDeviceName.isEmpty) {
+      storedDeviceName = 'jai01';
+    }
 
-    _deviceName = _sanitizeTopicLevel(storedDeviceName);
-
-    _controllerId = storedControllerId.trim().isEmpty
-        ? 'controller01'
-        : _sanitizeTopicLevel(storedControllerId);
-
-    debugPrint('Hive user key: $_userKey');
-    debugPrint('Hive device name: $_deviceName');
-    debugPrint('Controller ID: $_controllerId');
-  }
-
-  String _sanitizeTopicLevel(String value) {
-    return value
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[/+#\s]+'), '-')
-        .replaceAll(RegExp(r'-+'), '-')
-        .replaceAll(RegExp(r'^-|-$'), '');
+    setState(() {
+      _deviceName = storedDeviceName;
+    });
   }
 
   void _createMqttTopics() {
-    _baseTopic = 'ariserskaruppiahs/$_deviceName/$_controllerId';
+    final String safeDeviceName = _deviceName.trim();
+
+    _baseTopic = 'ariserskaruppiahs/$safeDeviceName/controller01';
     _electricalTopic = '$_baseTopic/telemetry/all';
     _availabilityTopic = '$_baseTopic/status/connection';
 
     debugPrint('MQTT base topic: $_baseTopic');
-    debugPrint('Electrical topic: $_electricalTopic');
-    debugPrint('Availability topic: $_availabilityTopic');
   }
 
   Future<void> _connectToMqttBroker() async {
@@ -282,7 +239,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       client.resubscribeOnAutoReconnect = true;
       client.useWebSocket = false;
       client.secure = false;
-      client.connectTimeoutPeriod = 8000;
+      client.connectTimeoutPeriod = 15000;
 
       client.onConnected = _onMqttConnected;
       client.onDisconnected = _onMqttDisconnected;
@@ -480,6 +437,16 @@ class _HomePageState extends ConsumerState<HomePage> {
 
       if (!mounted) return;
 
+      if (pFail && !_phaseFailure) {
+        // Record Safety Trip Log
+        ref.read(dataLogProvider.notifier).addLog(
+              motorName: 'System',
+              action: 'OFF',
+              trigger: 'Safety Trip',
+              details: fault,
+            );
+      }
+
       setState(() {
         _rVoltage = rV;
         _yVoltage = yV;
@@ -519,41 +486,19 @@ class _HomePageState extends ConsumerState<HomePage> {
     });
   }
 
-  Future<void> _logoutUser() async {
-    final bool? confirm = await showDialog<bool>(
+  void _openSettingsBottomSheet() {
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Logout'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    await ref.read(sessionProvider.notifier).logout();
-
-    if (!mounted) return;
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const FirstPage()),
-      (route) => false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const SettingsBottomSheet(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final activeLanguage = ref.watch(localeProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_deviceName.isEmpty ? 'ARISERS' : _deviceName.toUpperCase()),
@@ -564,41 +509,87 @@ class _HomePageState extends ConsumerState<HomePage> {
             tooltip: 'Refresh Connection',
           ),
           IconButton(
-            onPressed: _logoutUser,
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Logout',
+            onPressed: _openSettingsBottomSheet,
+            icon: const Icon(Icons.settings_rounded),
+            tooltip: Words.get('settings', activeLanguage),
           ),
         ],
       ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _initializeApplication,
-          color: AppColors.primary,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildStatusBanner(),
-                const SizedBox(height: 16),
-                _buildTelemetryGrid(),
-                const SizedBox(height: 16),
-                _buildPhaseAndFaultCard(),
-                const SizedBox(height: 20),
-                MotorControllerWidget(
-                  mqttClient: _mqttClient,
-                  baseTopic: _baseTopic,
-                ),
-              ],
-            ),
+      body: IndexedStack(
+        index: _selectedTabIndex,
+        children: [
+          _buildDashboardView(activeLanguage),
+          const SchedulersView(),
+          const CyclicTimerView(),
+          const DataLogView(),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedTabIndex,
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: Colors.grey.shade600,
+        type: BottomNavigationBarType.fixed,
+        onTap: (index) {
+          setState(() => _selectedTabIndex = index);
+        },
+        items: [
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.dashboard_rounded),
+            label: Words.get('dashboard', activeLanguage),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.alarm_rounded),
+            label: Words.get('schedulers', activeLanguage),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.loop_rounded),
+            label: Words.get('cyclic_timer', activeLanguage),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.receipt_long_rounded),
+            label: Words.get('data_logs', activeLanguage),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDashboardView(AppLanguage activeLanguage) {
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _initializeApplication,
+        color: AppColors.primary,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildStatusBanner(activeLanguage),
+              const SizedBox(height: 16),
+              _buildTelemetryGrid(activeLanguage),
+              const SizedBox(height: 16),
+              _buildPhaseAndFaultCard(activeLanguage),
+              const SizedBox(height: 20),
+              MotorControllerWidget(
+                mqttClient: _mqttClient,
+                baseTopic: _baseTopic,
+                onLogEvent: (motorName, action, trigger) {
+                  ref.read(dataLogProvider.notifier).addLog(
+                        motorName: motorName,
+                        action: action,
+                        trigger: trigger,
+                      );
+                },
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildStatusBanner() {
+  Widget _buildStatusBanner(AppLanguage activeLanguage) {
     final bool online = _isMqttConnected && _isDeviceOnline;
 
     return Container(
@@ -633,7 +624,9 @@ class _HomePageState extends ConsumerState<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  online ? 'Device Online' : 'Device Offline',
+                  online
+                      ? Words.get('device_online', activeLanguage)
+                      : Words.get('device_offline', activeLanguage),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -659,14 +652,14 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildTelemetryGrid() {
+  Widget _buildTelemetryGrid(AppLanguage activeLanguage) {
     return Column(
       children: [
         Row(
           children: [
             Expanded(
               child: _buildSensorCard(
-                title: 'R Voltage',
+                title: Words.get('r_voltage', activeLanguage),
                 value: '${_rVoltage.toStringAsFixed(1)} V',
                 icon: Icons.flash_on_rounded,
                 color: Colors.red.shade600,
@@ -675,7 +668,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             const SizedBox(width: 12),
             Expanded(
               child: _buildSensorCard(
-                title: 'Y Voltage',
+                title: Words.get('y_voltage', activeLanguage),
                 value: '${_yVoltage.toStringAsFixed(1)} V',
                 icon: Icons.flash_on_rounded,
                 color: Colors.amber.shade700,
@@ -684,7 +677,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             const SizedBox(width: 12),
             Expanded(
               child: _buildSensorCard(
-                title: 'B Voltage',
+                title: Words.get('b_voltage', activeLanguage),
                 value: '${_bVoltage.toStringAsFixed(1)} V',
                 icon: Icons.flash_on_rounded,
                 color: Colors.blue.shade600,
@@ -697,7 +690,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           children: [
             Expanded(
               child: _buildSensorCard(
-                title: 'R Current',
+                title: Words.get('r_current', activeLanguage),
                 value: '${_rCurrent.toStringAsFixed(1)} A',
                 icon: Icons.electric_meter_rounded,
                 color: Colors.red.shade600,
@@ -706,7 +699,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             const SizedBox(width: 12),
             Expanded(
               child: _buildSensorCard(
-                title: 'Y Current',
+                title: Words.get('y_current', activeLanguage),
                 value: '${_yCurrent.toStringAsFixed(1)} A',
                 icon: Icons.electric_meter_rounded,
                 color: Colors.amber.shade700,
@@ -715,7 +708,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             const SizedBox(width: 12),
             Expanded(
               child: _buildSensorCard(
-                title: 'B Current',
+                title: Words.get('b_current', activeLanguage),
                 value: '${_bCurrent.toStringAsFixed(1)} A',
                 icon: Icons.electric_meter_rounded,
                 color: Colors.blue.shade600,
@@ -771,7 +764,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildPhaseAndFaultCard() {
+  Widget _buildPhaseAndFaultCard(AppLanguage activeLanguage) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -791,7 +784,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           Column(
             children: [
               Text(
-                'Frequency',
+                Words.get('frequency', activeLanguage),
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 4),
@@ -808,7 +801,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           Column(
             children: [
               Text(
-                'Sequence',
+                Words.get('phase_sequence', activeLanguage),
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 4),
@@ -825,12 +818,16 @@ class _HomePageState extends ConsumerState<HomePage> {
           Column(
             children: [
               Text(
-                'Fault Status',
+                Words.get('fault_status', activeLanguage),
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 4),
               Text(
-                _phaseFailure ? 'PHASE FAILURE' : _faultMessage,
+                _phaseFailure
+                    ? 'PHASE FAILURE'
+                    : (_faultMessage == 'No fault'
+                        ? Words.get('no_fault', activeLanguage)
+                        : _faultMessage),
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,

@@ -22,9 +22,9 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   static const List<String> publicBrokers = [
+    'test.mosquitto.org',
     'broker.emqx.io',
     'broker.hivemq.com',
-    'test.mosquitto.org',
   ];
   static const int mqttPort = 1883;
 

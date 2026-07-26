@@ -21,7 +21,11 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  static const String mqttBroker = 'broker.hivemq.com';
+  static const List<String> publicBrokers = [
+    'broker.emqx.io',
+    'broker.hivemq.com',
+    'test.mosquitto.org',
+  ];
   static const int mqttPort = 1883;
 
   // MQTT OBJECTS
@@ -251,100 +255,66 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     setState(() {
       _isConnecting = true;
-      _connectionMessage = 'Connecting to HiveMQ broker...';
+      _connectionMessage = 'Connecting to MQTT broker...';
     });
 
     final String clientIdentifier =
         'arisers_${DateTime.now().millisecondsSinceEpoch % 1000000}';
 
-    // 1. Attempt TCP Port 1883
-    MqttServerClient client = MqttServerClient.withPort(
-      mqttBroker,
-      clientIdentifier,
-      mqttPort,
-    );
+    for (final String host in publicBrokers) {
+      if (!mounted) return;
 
-    client.logging(on: false);
-    client.keepAlivePeriod = 20;
-    client.autoReconnect = true;
-    client.resubscribeOnAutoReconnect = true;
-    client.useWebSocket = false;
-    client.secure = false;
-    client.connectTimeoutPeriod = 15000;
+      setState(() {
+        _connectionMessage = 'Connecting to $host...';
+      });
 
-    client.onConnected = _onMqttConnected;
-    client.onDisconnected = _onMqttDisconnected;
+      debugPrint('Attempting MQTT connection to $host:$mqttPort...');
 
-    final MqttConnectMessage connectMessage = MqttConnectMessage()
-        .withClientIdentifier(clientIdentifier)
-        .startClean()
-        .withWillQos(MqttQos.atLeastOnce);
-
-    client.connectionMessage = connectMessage;
-    _mqttClient = client;
-
-    try {
-      debugPrint('Attempting TCP connection to $mqttBroker:$mqttPort...');
-      await client.connect();
-
-      if (client.connectionStatus?.state == MqttConnectionState.connected) {
-        debugPrint('Successfully connected to $mqttBroker via TCP');
-        if (!mounted) return;
-
-        setState(() {
-          _isConnecting = false;
-          _isMqttConnected = true;
-          _connectionMessage = 'Connected to $mqttBroker';
-        });
-
-        _subscribeToTelemetryTopics();
-        return;
-      }
-    } catch (tcpError) {
-      debugPrint('TCP Connection to HiveMQ failed: $tcpError. Trying WebSocket port 8000...');
-      client.disconnect();
-    }
-
-    // 2. Attempt WebSocket Port 8000 Fallback
-    try {
-      final MqttServerClient wsClient = MqttServerClient.withPort(
-        mqttBroker,
-        '${clientIdentifier}_ws',
-        8000,
+      final MqttServerClient client = MqttServerClient.withPort(
+        host,
+        clientIdentifier,
+        mqttPort,
       );
 
-      wsClient.logging(on: false);
-      wsClient.keepAlivePeriod = 20;
-      wsClient.autoReconnect = true;
-      wsClient.resubscribeOnAutoReconnect = true;
-      wsClient.useWebSocket = true;
-      wsClient.websocketProtocols = ['mqtt'];
-      wsClient.secure = false;
-      wsClient.connectTimeoutPeriod = 5000;
+      client.logging(on: false);
+      client.keepAlivePeriod = 20;
+      client.autoReconnect = true;
+      client.resubscribeOnAutoReconnect = true;
+      client.useWebSocket = false;
+      client.secure = false;
+      client.connectTimeoutPeriod = 8000;
 
-      wsClient.onConnected = _onMqttConnected;
-      wsClient.onDisconnected = _onMqttDisconnected;
-      wsClient.connectionMessage = connectMessage;
+      client.onConnected = _onMqttConnected;
+      client.onDisconnected = _onMqttDisconnected;
 
-      _mqttClient = wsClient;
-      debugPrint('Attempting WebSocket connection to $mqttBroker:8000...');
-      await wsClient.connect();
+      final MqttConnectMessage connectMessage = MqttConnectMessage()
+          .withClientIdentifier(clientIdentifier)
+          .startClean()
+          .withWillQos(MqttQos.atLeastOnce);
 
-      if (wsClient.connectionStatus?.state == MqttConnectionState.connected) {
-        debugPrint('Successfully connected to $mqttBroker via WebSocket (8000)');
-        if (!mounted) return;
+      client.connectionMessage = connectMessage;
+      _mqttClient = client;
 
-        setState(() {
-          _isConnecting = false;
-          _isMqttConnected = true;
-          _connectionMessage = 'Connected to $mqttBroker (WS)';
-        });
+      try {
+        await client.connect();
 
-        _subscribeToTelemetryTopics();
-        return;
+        if (client.connectionStatus?.state == MqttConnectionState.connected) {
+          debugPrint('Successfully connected to $host');
+          if (!mounted) return;
+
+          setState(() {
+            _isConnecting = false;
+            _isMqttConnected = true;
+            _connectionMessage = 'Connected to $host';
+          });
+
+          _subscribeToTelemetryTopics();
+          return;
+        }
+      } catch (error) {
+        debugPrint('Failed to connect to $host: $error');
+        client.disconnect();
       }
-    } catch (wsError) {
-      debugPrint('WebSocket Connection to HiveMQ failed: $wsError');
     }
 
     if (!mounted) return;
@@ -352,12 +322,12 @@ class _HomePageState extends ConsumerState<HomePage> {
     setState(() {
       _isConnecting = false;
       _isMqttConnected = false;
-      _connectionMessage = 'HiveMQ connection failed';
+      _connectionMessage = 'Broker connection failed';
     });
 
     UIHelpers.showSnackBar(
       context,
-      message: 'Could not connect to HiveMQ broker. Check internet connection.',
+      message: 'Could not connect to any MQTT public broker. Check internet connection.',
       color: AppColors.error,
     );
   }

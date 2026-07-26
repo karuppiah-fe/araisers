@@ -788,6 +788,14 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildPhaseAndFaultCard(AppLanguage activeLanguage) {
+    final String displayFault = _phaseFailure
+        ? 'PHASE FAILURE'
+        : (_faultMessage == 'No fault'
+            ? Words.get('no_fault', activeLanguage)
+            : _faultMessage);
+
+    final bool isError = _phaseFailure || _faultMessage != 'No fault';
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -801,60 +809,79 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          Column(
+          Row(
             children: [
-              Text(
-                Words.get('frequency', activeLanguage),
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      Words.get('frequency', activeLanguage),
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_frequency.toStringAsFixed(1)} Hz',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '${_frequency.toStringAsFixed(1)} Hz',
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
+              Container(width: 1, height: 36, color: Colors.grey.shade300),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      Words.get('phase_sequence', activeLanguage),
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _phaseSequence,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          Container(width: 1, height: 36, color: Colors.grey.shade300),
-          Column(
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+          Row(
             children: [
-              Text(
-                Words.get('phase_sequence', activeLanguage),
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              Icon(
+                isError ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
+                color: isError ? AppColors.error : AppColors.success,
+                size: 22,
               ),
-              const SizedBox(height: 4),
-              Text(
-                _phaseSequence,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          Container(width: 1, height: 36, color: Colors.grey.shade300),
-          Column(
-            children: [
-              Text(
-                Words.get('fault_status', activeLanguage),
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _phaseFailure
-                    ? 'PHASE FAILURE'
-                    : (_faultMessage == 'No fault'
-                        ? Words.get('no_fault', activeLanguage)
-                        : _faultMessage),
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: _phaseFailure ? AppColors.error : AppColors.success,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      Words.get('fault_status', activeLanguage),
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                    Text(
+                      displayFault,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: isError ? AppColors.error : AppColors.success,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
             ],

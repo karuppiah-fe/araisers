@@ -22,7 +22,7 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   // MQTT PUBLIC BROKER SETTINGS
-  static const String mqttBroker = 'broker.emqx.io';
+  static const String mqttBroker = 'broker.hivemq.com';
   static const int mqttPort = 1883;
   static const bool useTls = false;
   static const String mqttUsername = '';
@@ -255,13 +255,14 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     setState(() {
       _isConnecting = true;
-      _connectionMessage = 'Connecting to EMQX broker...';
+      _connectionMessage = 'Connecting to HiveMQ broker...';
     });
 
     final String clientIdentifier =
-        'arisers_app_${DateTime.now().millisecondsSinceEpoch}';
+        'arisers_${DateTime.now().millisecondsSinceEpoch % 1000000}';
 
-    final MqttServerClient client = MqttServerClient.withPort(
+    // Attempt 1: Standard TCP on 1883
+    MqttServerClient client = MqttServerClient.withPort(
       mqttBroker,
       clientIdentifier,
       mqttPort,
@@ -273,6 +274,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     client.resubscribeOnAutoReconnect = true;
     client.useWebSocket = false;
     client.secure = useTls;
+    client.connectTimeoutPeriod = 8000;
 
     client.onConnected = _onMqttConnected;
     client.onDisconnected = _onMqttDisconnected;
@@ -287,27 +289,57 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     client.connectionMessage = connectMessage;
-
     _mqttClient = client;
 
     try {
+      debugPrint('Attempting MQTT TCP connection to $mqttBroker:$mqttPort...');
       await client.connect();
-    } catch (error) {
+    } catch (tcpError) {
+      debugPrint('MQTT TCP connection failed: $tcpError. Trying WebSocket port 8083...');
       client.disconnect();
 
-      if (!mounted) return;
+      // Attempt 2: WebSocket fallback on HiveMQ port 8000
+      MqttServerClient? wsClient;
+      try {
+        wsClient = MqttServerClient.withPort(
+          mqttBroker,
+          '${clientIdentifier}_ws',
+          8000,
+        );
 
-      setState(() {
-        _isConnecting = false;
-        _isMqttConnected = false;
-        _connectionMessage = 'EMQX connection failed';
-      });
+        wsClient.logging(on: false);
+        wsClient.keepAlivePeriod = 20;
+        wsClient.autoReconnect = true;
+        wsClient.resubscribeOnAutoReconnect = true;
+        wsClient.useWebSocket = true;
+        wsClient.websocketProtocols = ['mqtt'];
+        wsClient.secure = false;
+        wsClient.connectTimeoutPeriod = 8000;
 
-      UIHelpers.showSnackBar(
-        context,
-        message: 'Could not connect to EMQX public broker',
-        color: AppColors.error,
-      );
+        wsClient.onConnected = _onMqttConnected;
+        wsClient.onDisconnected = _onMqttDisconnected;
+        wsClient.connectionMessage = connectMessage;
+
+        _mqttClient = wsClient;
+        await wsClient.connect();
+      } catch (wsError) {
+        wsClient?.disconnect();
+        debugPrint('MQTT WebSocket connection failed: $wsError');
+
+        if (!mounted) return;
+
+        setState(() {
+          _isConnecting = false;
+          _isMqttConnected = false;
+          _connectionMessage = 'HiveMQ connection failed';
+        });
+
+        UIHelpers.showSnackBar(
+          context,
+          message: 'Could not connect to HiveMQ public broker. Check internet connection.',
+          color: AppColors.error,
+        );
+      }
     }
   }
 
@@ -317,7 +349,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     setState(() {
       _isConnecting = false;
       _isMqttConnected = true;
-      _connectionMessage = 'Connected to EMQX public broker';
+      _connectionMessage = 'Connected to HiveMQ public broker';
     });
 
     _subscribeToTelemetryTopics();
@@ -330,7 +362,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       _isConnecting = false;
       _isMqttConnected = false;
       _isDeviceOnline = false;
-      _connectionMessage = 'Disconnected from EMQX broker';
+      _connectionMessage = 'Disconnected from HiveMQ broker';
     });
   }
 
@@ -344,6 +376,8 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     client.subscribe(_electricalTopic, MqttQos.atLeastOnce);
     client.subscribe(_availabilityTopic, MqttQos.atLeastOnce);
+    client.subscribe(_baseTopic, MqttQos.atLeastOnce);
+    client.subscribe('$_baseTopic/#', MqttQos.atLeastOnce);
 
     final Stream<List<MqttReceivedMessage<MqttMessage?>>>? updates =
         client.updates;
@@ -368,10 +402,16 @@ class _HomePageState extends ConsumerState<HomePage> {
       );
 
       final String payload = rawPayload.trim();
+      debugPrint('MQTT received [$topic]: $payload');
 
       if (topic == _availabilityTopic) {
         _handleDeviceAvailability(payload);
-      } else if (topic == _electricalTopic) {
+      }
+
+      if (topic == _electricalTopic ||
+          payload.contains('rVoltage') ||
+          payload.contains('voltage') ||
+          payload.contains('phases')) {
         _handleElectricalTelemetry(payload);
       }
     }
@@ -380,7 +420,13 @@ class _HomePageState extends ConsumerState<HomePage> {
   void _handleDeviceAvailability(String payload) {
     final String cleanPayload = payload.toLowerCase();
 
-    final bool online =
+    final bool isExplicitOffline =
+        cleanPayload == 'offline' ||
+        cleanPayload == 'disconnected' ||
+        cleanPayload == 'false' ||
+        cleanPayload == '0';
+
+    final bool isExplicitOnline =
         cleanPayload == 'online' ||
         cleanPayload == 'connected' ||
         cleanPayload == 'ready' ||
@@ -390,7 +436,11 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (!mounted) return;
 
     setState(() {
-      _isDeviceOnline = online;
+      if (isExplicitOffline) {
+        _isDeviceOnline = false;
+      } else if (isExplicitOnline) {
+        _isDeviceOnline = true;
+      }
     });
   }
 
@@ -400,15 +450,39 @@ class _HomePageState extends ConsumerState<HomePage> {
 
       if (decoded is! Map<String, dynamic>) return;
 
-      final double rV = _parseDouble(decoded['rVoltage'] ?? decoded['vr']);
-      final double yV = _parseDouble(decoded['yVoltage'] ?? decoded['vy']);
-      final double bV = _parseDouble(decoded['bVoltage'] ?? decoded['vb']);
+      final Map<String, dynamic>? phases =
+          decoded['phases'] is Map ? Map<String, dynamic>.from(decoded['phases']) : null;
 
-      final double rA = _parseDouble(decoded['rCurrent'] ?? decoded['ir']);
-      final double yA = _parseDouble(decoded['yCurrent'] ?? decoded['iy']);
-      final double bA = _parseDouble(decoded['bCurrent'] ?? decoded['ib']);
+      final Map<String, dynamic>? rPhase =
+          phases?['r'] is Map ? Map<String, dynamic>.from(phases!['r']) : null;
+      final Map<String, dynamic>? yPhase =
+          phases?['y'] is Map ? Map<String, dynamic>.from(phases!['y']) : null;
+      final Map<String, dynamic>? bPhase =
+          phases?['b'] is Map ? Map<String, dynamic>.from(phases!['b']) : null;
 
-      final double freq = _parseDouble(decoded['frequency'] ?? decoded['freq']);
+      final double rV = _parseDouble(
+        decoded['rVoltage'] ?? decoded['vr'] ?? rPhase?['voltage'],
+      );
+      final double yV = _parseDouble(
+        decoded['yVoltage'] ?? decoded['vy'] ?? yPhase?['voltage'],
+      );
+      final double bV = _parseDouble(
+        decoded['bVoltage'] ?? decoded['vb'] ?? bPhase?['voltage'],
+      );
+
+      final double rA = _parseDouble(
+        decoded['rCurrent'] ?? decoded['ir'] ?? rPhase?['current'],
+      );
+      final double yA = _parseDouble(
+        decoded['yCurrent'] ?? decoded['iy'] ?? yPhase?['current'],
+      );
+      final double bA = _parseDouble(
+        decoded['bCurrent'] ?? decoded['ib'] ?? bPhase?['current'],
+      );
+
+      final double freq = _parseDouble(
+        decoded['frequency'] ?? decoded['freq'] ?? rPhase?['frequency'],
+      );
 
       final String seq =
           decoded['phaseSequence']?.toString() ??

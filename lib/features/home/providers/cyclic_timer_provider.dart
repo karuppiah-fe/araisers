@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arisers/features/home/providers/datalog_provider.dart';
 
@@ -52,6 +53,7 @@ class CyclicTimerNotifier extends StateNotifier<CyclicState> {
   Timer? _countdownTimer;
   final Ref _ref;
   Function(String motorName, bool turnOn)? onCommandTrigger;
+  Function(String payload)? onMqttSync;
 
   CyclicTimerNotifier(this._ref) : super(CyclicState());
 
@@ -63,6 +65,21 @@ class CyclicTimerNotifier extends StateNotifier<CyclicState> {
 
   void setCommandHandler(Function(String motorName, bool turnOn) handler) {
     onCommandTrigger = handler;
+  }
+
+  void setMqttSyncHandler(Function(String payload) handler) {
+    onMqttSync = handler;
+  }
+
+  void _syncToMqtt() {
+    final Map<String, dynamic> payload = {
+      'm': state.motorName == 'Motor 1' ? 1 : 2,
+      'runM': state.runMinutes,
+      'pauseM': state.pauseMinutes,
+      'cycles': state.totalCycles,
+      'en': state.status == CyclicStatus.running,
+    };
+    onMqttSync?.call(jsonEncode(payload));
   }
 
   void updateConfig({
@@ -82,6 +99,7 @@ class CyclicTimerNotifier extends StateNotifier<CyclicState> {
       pauseMinutes: pauseMinutes ?? state.pauseMinutes,
       totalCycles: totalCycles ?? state.totalCycles,
     );
+    _syncToMqtt();
   }
 
   void startCycle() {
@@ -95,6 +113,8 @@ class CyclicTimerNotifier extends StateNotifier<CyclicState> {
       remainingSeconds: state.runMinutes * 60,
       status: CyclicStatus.running,
     );
+
+    _syncToMqtt();
 
     // Turn motor ON
     onCommandTrigger?.call(state.motorName, true);
@@ -126,6 +146,7 @@ class CyclicTimerNotifier extends StateNotifier<CyclicState> {
       status: CyclicStatus.idle,
       remainingSeconds: 0,
     );
+    _syncToMqtt();
   }
 
   void _runTick() {

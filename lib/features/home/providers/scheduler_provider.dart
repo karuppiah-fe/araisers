@@ -183,11 +183,28 @@ class SchedulerNotifier extends StateNotifier<List<MotorSchedule>> {
     _saveSchedules();
   }
 
+  Function(String payload)? onMqttSync;
+
+  void setMqttSyncHandler(Function(String payload) handler) {
+    onMqttSync = handler;
+  }
+
   void _saveSchedules() {
     try {
       final box = Hive.box(_boxName);
       final rawList = state.map((s) => jsonEncode(s.toJson())).toList();
       box.put(_key, rawList);
+
+      final espList = state.map((s) => {
+        'm': s.motorName == 'Motor 1' ? 1 : 2,
+        'onH': s.onTime.hour,
+        'onM': s.onTime.minute,
+        'offH': s.offTime.hour,
+        'offM': s.offTime.minute,
+        'en': s.isEnabled,
+      }).toList();
+
+      onMqttSync?.call(jsonEncode(espList));
     } catch (_) {}
   }
 }

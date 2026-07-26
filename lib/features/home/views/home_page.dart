@@ -96,7 +96,30 @@ class _HomePageState extends ConsumerState<HomePage> {
       ref
           .read(cyclicTimerProvider.notifier)
           .setCommandHandler(_sendMqttCommand);
+
+      ref.read(schedulerProvider.notifier).setMqttSyncHandler(
+            (payload) => _publishConfigMqtt('$_baseTopic/config/scheduler', payload),
+          );
+
+      ref.read(cyclicTimerProvider.notifier).setMqttSyncHandler(
+            (payload) => _publishConfigMqtt('$_baseTopic/config/cyclic', payload),
+          );
     });
+  }
+
+  void _publishConfigMqtt(String topic, String payload) {
+    final MqttServerClient? client = _mqttClient;
+    if (client == null ||
+        client.connectionStatus?.state != MqttConnectionState.connected ||
+        topic.isEmpty) {
+      return;
+    }
+
+    final MqttClientPayloadBuilder builder = MqttClientPayloadBuilder();
+    builder.addString(payload);
+
+    client.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!, retain: true);
+    debugPrint('Published Config to ESP32 [$topic]: $payload');
   }
 
   void _sendMqttCommand(String motorName, bool turnOn) {

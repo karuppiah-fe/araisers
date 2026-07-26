@@ -1,0 +1,102 @@
+name: arisers
+description: "Arisers smart irrigation controller application."
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI icons
+  cupertino_icons: ^1.0.8
+
+  # ---------------------------------------------------------
+  # FIREBASE
+  # ---------------------------------------------------------
+
+  # Required to initialize Firebase
+  firebase_core: any
+
+  # Firebase Realtime Database
+  firebase_database: ^12.4.6
+
+  # Login using email/password, phone number, etc.
+  firebase_auth: any
+
+  # ---------------------------------------------------------
+  # STATE MANAGEMENT
+  # ---------------------------------------------------------
+
+  # Riverpod state management
+  flutter_riverpod: ^2.6.1
+  flutter_bluetooth_serial: ^0.4.0
+  # ---------------------------------------------------------
+  # MQTT
+  # ---------------------------------------------------------
+
+  # MQTT publish and subscribe communication
+  mqtt_client: ^10.11.11
+
+  # ---------------------------------------------------------
+  # LOCAL DATABASE
+  # ---------------------------------------------------------
+
+  # Modern maintained Hive database
+  hive_ce: any
+
+  # Flutter support for Hive
+  hive_ce_flutter: ^2.3.4
+
+  # ---------------------------------------------------------
+  # INTERNET AND NETWORK
+  # ---------------------------------------------------------
+
+  # Check Wi-Fi/mobile internet connection
+  connectivity_plus: any
+
+  # Verify actual internet availability
+  internet_connection_checker_plus: any
+
+  # ---------------------------------------------------------
+  # UTILITIES
+  # ---------------------------------------------------------
+
+  # Date and time formatting
+  intl: any
+
+  # Generate unique MQTT client IDs, command IDs, device IDs
+  uuid: any
+
+  # Store file paths if required
+  path_provider: any
+
+  # Compare Dart objects/models
+  equatable: any
+
+  # Logger for Firebase, MQTT and application debugging
+  logger: any
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  permission_handler: ^12.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+  # Required when generating Hive model adapters
+  build_runner: any
+
+  # Hive model adapter generator
+  hive_ce_generator: any
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/

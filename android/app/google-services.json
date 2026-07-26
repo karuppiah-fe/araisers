@@ -1,0 +1,144 @@
+{
+  "project_info": {
+    "project_number": "781381337943",
+    "firebase_url": "https://karuppiahhouse-default-rtdb.firebaseio.com",
+    "project_id": "karuppiahhouse",
+    "storage_bucket": "karuppiahhouse.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781381337943:android:48350b2e448c36166c7412",
+        "android_client_info": {
+          "package_name": "com.example.arisers"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBov4KGNyY3_o8_EhxGrOKqrJq1i2ZxlVU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781381337943:android:539479a937543d176c7412",
+        "android_client_info": {
+          "package_name": "com.example.arsathhouse"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBov4KGNyY3_o8_EhxGrOKqrJq1i2ZxlVU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781381337943:android:0251ba197d7216736c7412",
+        "android_client_info": {
+          "package_name": "com.example.arsathhousefinal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBov4KGNyY3_o8_EhxGrOKqrJq1i2ZxlVU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781381337943:android:ddbddc9266138bf16c7412",
+        "android_client_info": {
+          "package_name": "com.example.feild_motor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBov4KGNyY3_o8_EhxGrOKqrJq1i2ZxlVU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781381337943:android:814be10dc1c257b06c7412",
+        "android_client_info": {
+          "package_name": "com.example.motor_control"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBov4KGNyY3_o8_EhxGrOKqrJq1i2ZxlVU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781381337943:android:2f96ba2779323caf6c7412",
+        "android_client_info": {
+          "package_name": "com.example.motor_control_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBov4KGNyY3_o8_EhxGrOKqrJq1i2ZxlVU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781381337943:android:31eb82feeb1d75cd6c7412",
+        "android_client_info": {
+          "package_name": "com.example.motor_controller"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBov4KGNyY3_o8_EhxGrOKqrJq1i2ZxlVU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

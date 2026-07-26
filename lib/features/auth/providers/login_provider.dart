@@ -72,7 +72,6 @@ class LoginNotifier extends AsyncNotifier<LoginResult?> {
         );
 
         final String savedUsername = userData['username']?.toString() ?? '';
-
         final String savedPassword = userData['password']?.toString() ?? '';
 
         if (savedUsername == cleanUsername && savedPassword == cleanPassword) {

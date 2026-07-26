@@ -1,7 +1,11 @@
-import 'package:arisers/riverpod/session_provider.dart';
-import 'package:arisers/riverpod/words.dart';
-import 'package:arisers/ui/bluetooth.dart';
-import 'package:arisers/ui/home.dart';
+import 'package:arisers/core/theme/app_colors.dart';
+import 'package:arisers/core/utils/ui_helpers.dart';
+import 'package:arisers/core/widgets/custom_button.dart';
+import 'package:arisers/core/widgets/custom_text_field.dart';
+import 'package:arisers/features/auth/providers/session_provider.dart';
+import 'package:arisers/features/bluetooth_setup/views/bluetooth_page.dart';
+import 'package:arisers/features/home/views/home_page.dart';
+import 'package:arisers/features/localization/providers/words_provider.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,9 +15,7 @@ class PasswordPage extends ConsumerStatefulWidget {
   const PasswordPage({super.key});
 
   @override
-  ConsumerState<PasswordPage> createState() {
-    return _PasswordPageState();
-  }
+  ConsumerState<PasswordPage> createState() => _PasswordPageState();
 }
 
 class _PasswordPageState extends ConsumerState<PasswordPage> {
@@ -28,7 +30,11 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
     final String password = passwordController.text.trim();
 
     if (password.isEmpty) {
-      showMessage(message: 'Please enter the password', color: Colors.red);
+      UIHelpers.showSnackBar(
+        context,
+        message: 'Please enter the password',
+        color: AppColors.error,
+      );
       return;
     }
 
@@ -37,23 +43,14 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
     });
 
     try {
-      /*
-       * Add your password-validation logic here when needed.
-       *
-       * At present, this code checks whether the password field
-       * is empty and then checks the device configuration.
-       */
-
       final bool deviceAlreadyConfigured = await checkDeviceConfiguration();
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (deviceAlreadyConfigured) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute<void>(builder: (_) => const Home()),
+          MaterialPageRoute<void>(builder: (_) => const HomePage()),
         );
       } else {
         Navigator.pushReplacement(
@@ -62,11 +59,12 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
         );
       }
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      showMessage(message: cleanError(error), color: Colors.red);
+      if (!mounted) return;
+      UIHelpers.showSnackBar(
+        context,
+        message: UIHelpers.cleanError(error),
+        color: AppColors.error,
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -159,7 +157,6 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
                 deviceName.isNotEmpty &&
                 wifiSsid.isNotEmpty &&
                 validPhase) {
-              // Existing device found! Link it to current user in Firebase & Hive
               await deviceReference.update({
                 'deviceName': deviceName,
                 'wifiSsid': wifiSsid,
@@ -184,28 +181,8 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
       debugPrint('Error checking global device info in Firebase: $e');
     }
 
-    // 3. No device found anywhere in Firebase
     await sessionBox.put('deviceConfigured', false);
     return false;
-  }
-
-  String cleanError(Object error) {
-    return error
-        .toString()
-        .replaceFirst('Exception: ', '')
-        .replaceFirst('FirebaseException: ', '');
-  }
-
-  void showMessage({required String message, required Color color}) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override
@@ -216,44 +193,27 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
 
   @override
   Widget build(BuildContext context) {
-    final Size screenSize = MediaQuery.sizeOf(context);
-    final double width = screenSize.width;
-    final double height = screenSize.height;
-
     final words = ref.watch(wordsProvider);
+    final Size size = MediaQuery.sizeOf(context);
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        backgroundColor: Colors.lightGreen,
-        foregroundColor: Colors.white,
-        centerTitle: true,
-        title: Text(
-          words.english['arisers'] ?? 'ARISERS',
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
+        title: Text(words.english['arisers'] ?? 'ARISERS'),
       ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: EdgeInsets.symmetric(
-              horizontal: width * 0.08,
-              vertical: height * 0.03,
+              horizontal: size.width * 0.06,
+              vertical: size.height * 0.03,
             ),
             child: Container(
               width: double.infinity,
-              constraints: const BoxConstraints(maxWidth: 450),
-              padding: EdgeInsets.symmetric(
-                horizontal: width * 0.06,
-                vertical: height * 0.045,
-              ),
+              constraints: const BoxConstraints(maxWidth: 420),
+              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Colors.lightGreen, Color(0xFF7CB342)],
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -261,8 +221,8 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
@@ -270,8 +230,8 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 75,
-                    height: 75,
+                    width: 70,
+                    height: 70,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.20),
                       shape: BoxShape.circle,
@@ -279,33 +239,31 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
                     child: const Icon(
                       Icons.lock_outline_rounded,
                       color: Colors.white,
-                      size: 40,
+                      size: 38,
                     ),
                   ),
-
-                  SizedBox(height: height * 0.02),
-
+                  const SizedBox(height: 16),
                   Text(
                     words.english['password'] ?? 'Password',
                     style: const TextStyle(
-                      fontSize: 29,
+                      fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
                   ),
-
-                  SizedBox(height: height * 0.012),
-
+                  const SizedBox(height: 8),
                   const Text(
                     'Enter your password to continue',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
-
-                  SizedBox(height: height * 0.035),
-
-                  TextField(
+                  const SizedBox(height: 24),
+                  CustomTextField(
                     controller: passwordController,
+                    hintText:
+                        words.english['enter the password'] ??
+                        'Enter the password',
+                    prefixIcon: Icons.password_rounded,
                     enabled: !isChecking,
                     obscureText: hidePassword,
                     textInputAction: TextInputAction.done,
@@ -314,81 +272,27 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
                         submitPassword();
                       }
                     },
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: Colors.white,
-                      hintText:
-                          words.english['enter the password'] ??
-                          'Enter the password',
-                      prefixIcon: const Icon(
-                        Icons.password_rounded,
-                        color: Colors.lightGreen,
-                      ),
-                      suffixIcon: IconButton(
-                        onPressed: isChecking
-                            ? null
-                            : () {
-                                setState(() {
-                                  hidePassword = !hidePassword;
-                                });
-                              },
-                        icon: Icon(
-                          hidePassword
-                              ? Icons.visibility_rounded
-                              : Icons.visibility_off_rounded,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Colors.green,
-                          width: 2,
-                        ),
+                    suffixIcon: IconButton(
+                      onPressed: isChecking
+                          ? null
+                          : () {
+                              setState(() {
+                                hidePassword = !hidePassword;
+                              });
+                            },
+                      icon: Icon(
+                        hidePassword
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        color: Colors.grey.shade700,
                       ),
                     ),
                   ),
-
-                  SizedBox(height: height * 0.035),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: ElevatedButton(
-                      onPressed: isChecking ? null : submitPassword,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.lightGreen,
-                        disabledBackgroundColor: Colors.white70,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: isChecking
-                          ? const SizedBox(
-                              width: 23,
-                              height: 23,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Colors.lightGreen,
-                              ),
-                            )
-                          : Text(
-                              words.english['submit'] ?? 'Submit',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
+                  const SizedBox(height: 28),
+                  CustomButton(
+                    text: words.english['submit'] ?? 'Submit',
+                    isLoading: isChecking,
+                    onPressed: submitPassword,
                   ),
                 ],
               ),

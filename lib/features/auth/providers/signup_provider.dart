@@ -20,10 +20,8 @@ class SignupNotifier extends AsyncNotifier<String?> {
     final String cleanUsername = username.trim();
     final String cleanPassword = password.trim();
 
-    // Username validation
     if (cleanUsername.isEmpty) {
       state = AsyncError('Please enter the username', StackTrace.current);
-
       return null;
     }
 
@@ -32,14 +30,11 @@ class SignupNotifier extends AsyncNotifier<String?> {
         'Username must contain at least 3 characters',
         StackTrace.current,
       );
-
       return null;
     }
 
-    // Password validation
     if (cleanPassword.isEmpty) {
       state = AsyncError('Please enter the password', StackTrace.current);
-
       return null;
     }
 
@@ -48,14 +43,12 @@ class SignupNotifier extends AsyncNotifier<String?> {
         'Password must contain at least 4 characters',
         StackTrace.current,
       );
-
       return null;
     }
 
     state = const AsyncLoading();
 
     try {
-      // Check whether the username already exists.
       final DataSnapshot usernameSnapshot = await _arisersRef
           .orderByChild('username')
           .equalTo(cleanUsername)
@@ -65,7 +58,6 @@ class SignupNotifier extends AsyncNotifier<String?> {
         throw Exception('This username is already registered');
       }
 
-      // Create the next user number.
       final DatabaseReference counterRef = _arisersRef.child('userCount');
 
       final TransactionResult transactionResult = await counterRef
@@ -94,7 +86,6 @@ class SignupNotifier extends AsyncNotifier<String?> {
 
       final String userKey = 'user$userNumber';
 
-      // Save the user in Firebase.
       await _arisersRef.child(userKey).set({
         'username': cleanUsername,
         'password': cleanPassword,

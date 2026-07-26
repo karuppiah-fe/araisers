@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:arisers/riverpod/session_provider.dart';
+import 'package:arisers/features/auth/providers/session_provider.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
@@ -299,7 +299,6 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
 
     final Completer<String>? completer = _responseCompleter;
 
-    // Backward compatibility for simple text messages.
     if (message.startsWith('STATUS:')) {
       final String statusMessage = message
           .replaceFirst('STATUS:', '')
@@ -317,7 +316,6 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
       return;
     }
 
-    // Current ESP32 firmware sends one JSON object per line.
     try {
       final dynamic decoded = jsonDecode(message);
 
@@ -339,7 +337,6 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
         ),
       );
 
-      // Complete configuration on the immediate ACK or final result.
       if ((type == 'ack' || type == 'result') &&
           completer != null &&
           !completer.isCompleted) {
@@ -477,8 +474,6 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
         throw Exception('Unexpected ESP32 response: $response');
       }
 
-      // Always save locally first. Firebase failure must not erase a
-      // successful ESP32 configuration.
       await saveConfigurationLocally(
         wifiSsid: cleanSsid,
         deviceName: cleanDeviceName,
@@ -542,7 +537,6 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
     final Box<dynamic> sessionBox = Hive.box(SessionNotifier.boxName);
 
     await sessionBox.put('bluetoothDeviceName', deviceName);
-
     await sessionBox.put('bluetoothDeviceAddress', deviceAddress);
   }
 
@@ -554,13 +548,9 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
     final Box<dynamic> sessionBox = Hive.box(SessionNotifier.boxName);
 
     await sessionBox.put('deviceName', deviceName);
-
     await sessionBox.put('wifiSsid', wifiSsid);
-
     await sessionBox.put('phase', phase);
-
     await sessionBox.put('deviceConfigured', true);
-
     await sessionBox.put('configuredAt', DateTime.now().toIso8601String());
   }
 
@@ -638,7 +628,7 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
     _inputSubscription = null;
 
     try {
-      await _connection?.cancel();
+      await _connection?.close();
     } catch (_) {
       try {
         _connection?.dispose();
@@ -656,7 +646,7 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
     } catch (_) {}
 
     try {
-      await _connection?.cancel();
+      await _connection?.close();
     } catch (_) {
       try {
         _connection?.dispose();

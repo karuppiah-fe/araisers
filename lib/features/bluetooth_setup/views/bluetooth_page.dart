@@ -1,6 +1,10 @@
-import 'package:arisers/riverpod/bluetooth_setup_provider.dart';
-import 'package:arisers/riverpod/words.dart';
-import 'package:arisers/ui/home.dart';
+import 'package:arisers/core/theme/app_colors.dart';
+import 'package:arisers/core/utils/ui_helpers.dart';
+import 'package:arisers/core/widgets/custom_button.dart';
+import 'package:arisers/core/widgets/custom_text_field.dart';
+import 'package:arisers/features/bluetooth_setup/providers/bluetooth_setup_provider.dart';
+import 'package:arisers/features/home/views/home_page.dart';
+import 'package:arisers/features/localization/providers/words_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,14 +19,11 @@ class BluetoothPage extends ConsumerStatefulWidget {
 
 class _BluetoothPageState extends ConsumerState<BluetoothPage> {
   final TextEditingController ssidController = TextEditingController();
-
   final TextEditingController wifiPasswordController = TextEditingController();
-
   final TextEditingController deviceNameController = TextEditingController();
 
   bool hideWifiPassword = true;
   bool autoConnectionStarted = false;
-
   int selectedPhase = 1;
 
   @override
@@ -35,7 +36,6 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
       }
 
       autoConnectionStarted = true;
-
       connectBluetooth(showSuccessMessage: false, showErrorMessage: false);
     });
   }
@@ -49,20 +49,24 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
     try {
       await ref.read(bluetoothSetupProvider.notifier).connectToArisers();
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (showSuccessMessage) {
-        showMessage(message: 'Connected to arisers', color: Colors.green);
+        UIHelpers.showSnackBar(
+          context,
+          message: 'Connected to arisers',
+          color: AppColors.success,
+        );
       }
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (showErrorMessage) {
-        showMessage(message: cleanError(error), color: Colors.red);
+        UIHelpers.showSnackBar(
+          context,
+          message: UIHelpers.cleanError(error),
+          color: AppColors.error,
+        );
       }
     }
   }
@@ -73,17 +77,21 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
     try {
       await ref.read(bluetoothSetupProvider.notifier).disconnect();
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      showMessage(message: 'Bluetooth disconnected', color: Colors.orange);
+      UIHelpers.showSnackBar(
+        context,
+        message: 'Bluetooth disconnected',
+        color: AppColors.warning,
+      );
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      showMessage(message: cleanError(error), color: Colors.red);
+      UIHelpers.showSnackBar(
+        context,
+        message: UIHelpers.cleanError(error),
+        color: AppColors.error,
+      );
     }
   }
 
@@ -91,23 +99,33 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
     FocusScope.of(context).unfocus();
 
     final String ssid = ssidController.text.trim();
-
     final String wifiPassword = wifiPasswordController.text;
-
     final String deviceName = deviceNameController.text.trim();
 
     if (ssid.isEmpty) {
-      showMessage(message: 'Please enter Wi-Fi SSID', color: Colors.red);
+      UIHelpers.showSnackBar(
+        context,
+        message: 'Please enter Wi-Fi SSID',
+        color: AppColors.error,
+      );
       return;
     }
 
     if (wifiPassword.isEmpty) {
-      showMessage(message: 'Please enter Wi-Fi password', color: Colors.red);
+      UIHelpers.showSnackBar(
+        context,
+        message: 'Please enter Wi-Fi password',
+        color: AppColors.error,
+      );
       return;
     }
 
     if (deviceName.isEmpty) {
-      showMessage(message: 'Please enter device name', color: Colors.red);
+      UIHelpers.showSnackBar(
+        context,
+        message: 'Please enter device name',
+        color: AppColors.error,
+      );
       return;
     }
 
@@ -121,55 +139,37 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
             phase: selectedPhase,
           );
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       final BluetoothSetupState completedState =
           ref.read(bluetoothSetupProvider).asData?.value ??
           const BluetoothSetupState();
 
-      showMessage(
+      UIHelpers.showSnackBar(
+        context,
         message: completedState.connectionMessage,
         color:
             completedState.connectionMessage.toLowerCase().contains('pending')
-            ? Colors.orange
-            : Colors.green,
+            ? AppColors.warning
+            : AppColors.success,
       );
 
       wifiPasswordController.clear();
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute<void>(builder: (_) => const Home()),
+        MaterialPageRoute<void>(builder: (_) => const HomePage()),
         (Route<dynamic> route) => false,
       );
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      showMessage(message: cleanError(error), color: Colors.red);
+      UIHelpers.showSnackBar(
+        context,
+        message: UIHelpers.cleanError(error),
+        color: AppColors.error,
+      );
     }
-  }
-
-  String cleanError(Object error) {
-    return error
-        .toString()
-        .replaceFirst('Exception: ', '')
-        .replaceFirst('TimeoutException: ', '');
-  }
-
-  void showMessage({required String message, required Color color}) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override
@@ -177,23 +177,16 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
     ssidController.dispose();
     wifiPasswordController.dispose();
     deviceNameController.dispose();
-
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final Size screenSize = MediaQuery.sizeOf(context);
-
-    final double width = screenSize.width;
-    final double height = screenSize.height;
-
+    final Size size = MediaQuery.sizeOf(context);
     final words = ref.watch(wordsProvider);
-
     final AsyncValue<BluetoothSetupState> setupAsync = ref.watch(
       bluetoothSetupProvider,
     );
-
     final BluetoothSetupState setupState =
         setupAsync.asData?.value ?? const BluetoothSetupState();
 
@@ -201,27 +194,15 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
         setupAsync.isLoading || setupState.isScanning || setupState.isSending;
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        backgroundColor: Colors.lightGreen,
-        foregroundColor: Colors.white,
-        centerTitle: true,
-        elevation: 0,
-        title: Text(
-          words.english['arisers'] ?? 'ARISERS',
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
+        title: Text(words.english['arisers'] ?? 'ARISERS'),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.symmetric(
-            horizontal: width * 0.05,
-            vertical: height * 0.025,
+            horizontal: size.width * 0.05,
+            vertical: size.height * 0.025,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -230,12 +211,9 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
                 setupState: setupState,
                 isLoading: isLoading,
               ),
-
-              SizedBox(height: height * 0.025),
-
+              SizedBox(height: size.height * 0.025),
               buildWifiSetupCard(
-                width: width,
-                height: height,
+                size: size,
                 isLoading: isLoading,
                 wifiTitle: words.english['wifi setup'] ?? 'Wi-Fi Setup',
                 ssidHint:
@@ -245,58 +223,26 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
                     words.english['enter the wifi password'] ??
                     'Enter the Wi-Fi Password',
               ),
-
-              SizedBox(height: height * 0.025),
-
+              SizedBox(height: size.height * 0.025),
               buildDeviceDetailsCard(
-                height: height,
+                size: size,
                 isLoading: isLoading,
                 deviceNameHint:
                     words.english['enter the device name'] ??
                     'Enter the device name',
               ),
-
-              SizedBox(height: height * 0.035),
-
-              SizedBox(
-                height: 56,
-                child: ElevatedButton.icon(
-                  onPressed: isLoading ? null : submitConfiguration,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.lightGreen,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.lightGreen.shade200,
-                    disabledForegroundColor: Colors.white,
-                    elevation: 3,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  icon: isLoading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.send_rounded),
-                  label: Text(
-                    isLoading
-                        ? setupState.connectionMessage
-                        : words.english['submit'] ?? 'Submit',
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+              SizedBox(height: size.height * 0.035),
+              CustomButton(
+                text: isLoading
+                    ? setupState.connectionMessage
+                    : words.english['submit'] ?? 'Submit',
+                isLoading: isLoading,
+                backgroundColor: AppColors.primary,
+                textColor: Colors.white,
+                icon: Icons.send_rounded,
+                onPressed: submitConfiguration,
               ),
-
-              SizedBox(height: height * 0.02),
-
+              SizedBox(height: size.height * 0.02),
               Text(
                 'Pair the ESP32 as "arisers" in your phone Bluetooth settings before connecting.',
                 textAlign: TextAlign.center,
@@ -325,13 +271,13 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isConnected ? Colors.green.shade200 : Colors.grey.shade300,
+          color: isConnected ? AppColors.primaryLight : Colors.grey.shade300,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -344,7 +290,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
                 height: 50,
                 decoration: BoxDecoration(
                   color: isConnected
-                      ? Colors.green.shade50
+                      ? AppColors.primaryLight.withValues(alpha: 0.2)
                       : Colors.red.shade50,
                   shape: BoxShape.circle,
                 ),
@@ -352,39 +298,34 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
                   isConnected
                       ? Icons.bluetooth_connected_rounded
                       : Icons.bluetooth_disabled_rounded,
-                  color: isConnected ? Colors.green : Colors.red,
+                  color: isConnected ? AppColors.primaryDark : AppColors.error,
                   size: 28,
                 ),
               ),
-
               const SizedBox(width: 14),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       isConnected
-                          ? 'Arisers connected'
-                          : 'Bluetooth connection',
+                          ? 'Arisers Connected'
+                          : 'Bluetooth Connection',
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-
                     const SizedBox(height: 4),
-
                     Text(
                       setupState.connectionMessage,
                       style: TextStyle(
                         fontSize: 13,
                         color: isConnected
-                            ? Colors.green.shade700
+                            ? AppColors.primaryDark
                             : Colors.grey.shade700,
                       ),
                     ),
-
                     if (setupState.connectedDeviceName != null) ...[
                       const SizedBox(height: 3),
                       Text(
@@ -395,25 +336,12 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
                         ),
                       ),
                     ],
-
-                    if (setupState.connectedDeviceAddress != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        setupState.connectedDeviceAddress!,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 16),
-
           SizedBox(
             width: double.infinity,
             height: 48,
@@ -421,7 +349,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
                 ? OutlinedButton.icon(
                     onPressed: isLoading ? null : disconnectBluetooth,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
+                      foregroundColor: AppColors.error,
                       side: BorderSide(color: Colors.red.shade300),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -434,15 +362,11 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
                     ),
                   )
                 : ElevatedButton.icon(
-                    onPressed: isLoading
-                        ? null
-                        : () {
-                            connectBluetooth();
-                          },
+                    onPressed: isLoading ? null : () => connectBluetooth(),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.lightGreen,
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.lightGreen.shade200,
+                      disabledBackgroundColor: AppColors.primaryLight,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -469,28 +393,24 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
   }
 
   Widget buildWifiSetupCard({
-    required double width,
-    required double height,
+    required Size size,
     required bool isLoading,
     required String wifiTitle,
     required String ssidHint,
     required String passwordHint,
   }) {
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: width * 0.05,
-        vertical: height * 0.03,
-      ),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Colors.lightGreen, Color(0xFF7CB342)],
+          colors: [AppColors.gradientStart, AppColors.gradientEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.lightGreen.withValues(alpha: 0.25),
+            color: AppColors.primary.withValues(alpha: 0.25),
             blurRadius: 14,
             offset: const Offset(0, 7),
           ),
@@ -498,54 +418,45 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
       ),
       child: Column(
         children: [
-          const Icon(Icons.wifi_rounded, color: Colors.white, size: 38),
-
+          const Icon(Icons.wifi_rounded, color: Colors.white, size: 36),
           const SizedBox(height: 8),
-
           Text(
             wifiTitle,
             style: const TextStyle(
-              fontSize: 25,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
-
-          SizedBox(height: height * 0.028),
-
-          TextField(
+          SizedBox(height: size.height * 0.02),
+          CustomTextField(
             controller: ssidController,
+            hintText: ssidHint,
+            prefixIcon: Icons.wifi_rounded,
             enabled: !isLoading,
             textInputAction: TextInputAction.next,
-            decoration: inputDecoration(
-              hintText: ssidHint,
-              icon: Icons.wifi_rounded,
-            ),
           ),
-
-          SizedBox(height: height * 0.02),
-
-          TextField(
+          const SizedBox(height: 14),
+          CustomTextField(
             controller: wifiPasswordController,
+            hintText: passwordHint,
+            prefixIcon: Icons.lock_rounded,
             enabled: !isLoading,
             obscureText: hideWifiPassword,
             textInputAction: TextInputAction.next,
-            decoration: inputDecoration(
-              hintText: passwordHint,
-              icon: Icons.lock_rounded,
-              suffixIcon: IconButton(
-                onPressed: isLoading
-                    ? null
-                    : () {
-                        setState(() {
-                          hideWifiPassword = !hideWifiPassword;
-                        });
-                      },
-                icon: Icon(
-                  hideWifiPassword
-                      ? Icons.visibility_rounded
-                      : Icons.visibility_off_rounded,
-                ),
+            suffixIcon: IconButton(
+              onPressed: isLoading
+                  ? null
+                  : () {
+                      setState(() {
+                        hideWifiPassword = !hideWifiPassword;
+                      });
+                    },
+              icon: Icon(
+                hideWifiPassword
+                    ? Icons.visibility_rounded
+                    : Icons.visibility_off_rounded,
+                color: Colors.grey.shade700,
               ),
             ),
           ),
@@ -555,7 +466,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
   }
 
   Widget buildDeviceDetailsCard({
-    required double height,
+    required Size size,
     required bool isLoading,
     required String deviceNameHint,
   }) {
@@ -580,41 +491,33 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
             children: [
               Icon(
                 Icons.settings_input_component_rounded,
-                color: Colors.lightGreen,
+                color: AppColors.primary,
               ),
               SizedBox(width: 8),
               Text(
-                'Device details',
+                'Device Details',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
-
-          SizedBox(height: height * 0.02),
-
-          TextField(
+          const SizedBox(height: 16),
+          CustomTextField(
             controller: deviceNameController,
+            hintText: deviceNameHint,
+            prefixIcon: Icons.devices_rounded,
             enabled: !isLoading,
             textInputAction: TextInputAction.done,
-            decoration: inputDecoration(
-              hintText: deviceNameHint,
-              icon: Icons.devices_rounded,
-            ),
           ),
-
-          SizedBox(height: height * 0.025),
-
+          const SizedBox(height: 20),
           Text(
-            'Select phase type',
+            'Select Phase Type',
             style: Theme.of(
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
-
-          SizedBox(height: height * 0.012),
-
+          const SizedBox(height: 10),
           Container(
-            height: 60,
+            height: 54,
             decoration: BoxDecoration(
               color: Colors.grey.shade200,
               borderRadius: BorderRadius.circular(14),
@@ -645,38 +548,6 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
     );
   }
 
-  InputDecoration inputDecoration({
-    required String hintText,
-    required IconData icon,
-    Widget? suffixIcon,
-  }) {
-    return InputDecoration(
-      filled: true,
-      fillColor: Colors.grey.shade100,
-      hintText: hintText,
-      hintStyle: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-      prefixIcon: Icon(icon, color: Colors.lightGreen.shade700),
-      suffixIcon: suffixIcon,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 17),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.green.shade300, width: 1.5),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.green, width: 2.2),
-      ),
-      disabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
-      ),
-    );
-  }
-
   Widget phaseButton({
     required String title,
     required int phase,
@@ -701,7 +572,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
         duration: const Duration(milliseconds: 200),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? Colors.lightGreen : Colors.transparent,
+          color: selected ? AppColors.primary : Colors.transparent,
           borderRadius: BorderRadius.horizontal(
             left: leftSide ? const Radius.circular(14) : Radius.zero,
             right: !leftSide ? const Radius.circular(14) : Radius.zero,
@@ -719,7 +590,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
             Text(
               title,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.bold,
                 color: selected ? Colors.white : Colors.black87,
               ),

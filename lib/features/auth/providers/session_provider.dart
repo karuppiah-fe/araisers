@@ -26,9 +26,7 @@ class SessionNotifier extends Notifier<SessionState> {
   @override
   SessionState build() {
     final bool isLoggedIn = _box.get('isLoggedIn', defaultValue: false) as bool;
-
     final String? username = _box.get('username')?.toString();
-
     final String? userKey = _box.get('userKey')?.toString();
 
     return SessionState(
@@ -73,4 +71,3 @@ class SessionNotifier extends Notifier<SessionState> {
     state = const SessionState.loggedOut();
   }
 }
-

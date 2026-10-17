@@ -14,13 +14,17 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService.initialize();
 
-  final title = message.notification?.title ?? message.data['title'] ?? '⚠️ Smart Irrigation Alert';
-  final body = message.notification?.body ?? message.data['body'] ?? 'Power cut or trip event detected';
+  final title =
+      message.notification?.title ??
+      message.data['title'] ??
+      '⚠️ Smart Irrigation Alert';
+  final body =
+      message.notification?.body ??
+      message.data['body'] ??
+      'Power cut or trip event detected';
 
   await NotificationService.showNotification(
     id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -81,3 +85,4 @@ class MyApp extends ConsumerWidget {
     );
   }
 }
+//hello

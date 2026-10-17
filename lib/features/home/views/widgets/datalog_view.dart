@@ -23,7 +23,19 @@ class _DataLogViewState extends ConsumerState<DataLogView> {
       if (_selectedFilter == 'All') return true;
       if (_selectedFilter == 'Motor 1') return log.motorName == 'Motor 1';
       if (_selectedFilter == 'Motor 2') return log.motorName == 'Motor 2';
-      if (_selectedFilter == 'Trips') return log.trigger == 'Safety Trip';
+      if (_selectedFilter == 'Voltages') {
+        return log.trigger == 'Telemetry' ||
+            log.trigger == 'Power Event' ||
+            log.action.contains('Volt') ||
+            log.action.contains('POWER');
+      }
+      if (_selectedFilter == 'Trips & Power') {
+        return log.trigger == 'Safety Trip' ||
+            log.trigger == 'Alert' ||
+            log.trigger == 'Power Event' ||
+            log.action.contains('POWER') ||
+            log.action.contains('FAULT');
+      }
       return true;
     }).toList();
 
@@ -47,7 +59,9 @@ class _DataLogViewState extends ConsumerState<DataLogView> {
                         const SizedBox(width: 8),
                         _buildFilterChip('Motor 2'),
                         const SizedBox(width: 8),
-                        _buildFilterChip('Trips'),
+                        _buildFilterChip('Voltages'),
+                        const SizedBox(width: 8),
+                        _buildFilterChip('Trips & Power'),
                       ],
                     ),
                   ),
@@ -118,12 +132,13 @@ class _DataLogViewState extends ConsumerState<DataLogView> {
   }
 
   Widget _buildLogCard(DataLogEntry log, AppLanguage activeLanguage) {
-    final isON = log.action == 'ON';
-    final isTrip = log.trigger == 'Safety Trip';
+    final isON = log.action == 'ON' || log.action == 'POWER RESTORED';
+    final isPowerCut = log.action == 'POWER CUT';
+    final isTrip = log.trigger == 'Safety Trip' || log.action.contains('PAUSED');
 
-    final Color badgeColor = isTrip
+    final Color badgeColor = isPowerCut || isTrip
         ? AppColors.error
-        : (isON ? AppColors.primary : Colors.grey.shade600);
+        : (isON ? AppColors.primary : Colors.grey.shade700);
 
     return Card(
       elevation: 2,
@@ -140,9 +155,11 @@ class _DataLogViewState extends ConsumerState<DataLogView> {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                isTrip
-                    ? Icons.warning_amber_rounded
-                    : (isON ? Icons.power_outlined : Icons.power_off_outlined),
+                isPowerCut
+                    ? Icons.power_off_rounded
+                    : (isTrip
+                        ? Icons.warning_amber_rounded
+                        : (isON ? Icons.power_rounded : Icons.power_off_outlined)),
                 color: badgeColor,
               ),
             ),
@@ -154,24 +171,29 @@ class _DataLogViewState extends ConsumerState<DataLogView> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '${log.motorName} - ${log.action}',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: badgeColor,
+                      Expanded(
+                        child: Text(
+                          '${log.motorName} - ${log.action}',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: badgeColor,
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 8),
                       Text(
                         _formatTimestamp(log.timestamp),
                         style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
                           color: AppColors.textSecondary,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Container(
@@ -192,21 +214,37 @@ class _DataLogViewState extends ConsumerState<DataLogView> {
                           ),
                         ),
                       ),
-                      if (log.details.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            log.details,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '👤 ${log.userName}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
                           ),
                         ),
-                      ],
+                      ),
                     ],
                   ),
+                  if (log.details.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      log.details,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -217,9 +255,16 @@ class _DataLogViewState extends ConsumerState<DataLogView> {
   }
 
   String _formatTimestamp(DateTime dt) {
+    final day = dt.day.toString().padLeft(2, '0');
+    final monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final month = monthNames[dt.month - 1];
+    final year = dt.year;
     final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     final min = dt.minute.toString().padLeft(2, '0');
     final period = dt.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$min $period';
+    return '$day $month $year, $hour:$min $period';
   }
 }

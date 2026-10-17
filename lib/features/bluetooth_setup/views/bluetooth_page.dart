@@ -7,6 +7,7 @@ import 'package:arisers/features/home/views/home_page.dart';
 import 'package:arisers/features/localization/providers/words_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 class BluetoothPage extends ConsumerStatefulWidget {
   const BluetoothPage({super.key});
@@ -21,6 +22,10 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
   final TextEditingController ssidController = TextEditingController();
   final TextEditingController wifiPasswordController = TextEditingController();
   final TextEditingController deviceNameController = TextEditingController();
+  final TextEditingController minAmpereController = TextEditingController();
+  final TextEditingController maxAmpereController = TextEditingController();
+  final TextEditingController minVoltageController = TextEditingController();
+  final TextEditingController maxVoltageController = TextEditingController();
 
   bool hideWifiPassword = true;
   bool autoConnectionStarted = false;
@@ -29,6 +34,12 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
   @override
   void initState() {
     super.initState();
+
+    final box = Hive.box('sessionBox');
+    minAmpereController.text = box.get('minAmp', defaultValue: '0.5').toString();
+    maxAmpereController.text = box.get('maxAmp', defaultValue: '20.0').toString();
+    minVoltageController.text = box.get('minVolt', defaultValue: '160.0').toString();
+    maxVoltageController.text = box.get('maxVolt', defaultValue: '270.0').toString();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || autoConnectionStarted) {
@@ -101,6 +112,10 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
     final String ssid = ssidController.text.trim();
     final String wifiPassword = wifiPasswordController.text;
     final String deviceName = deviceNameController.text.trim();
+    final double? minAmp = double.tryParse(minAmpereController.text.trim());
+    final double? maxAmp = double.tryParse(maxAmpereController.text.trim());
+    final double? minVolt = double.tryParse(minVoltageController.text.trim());
+    final double? maxVolt = double.tryParse(maxVoltageController.text.trim());
 
     if (ssid.isEmpty) {
       UIHelpers.showSnackBar(
@@ -129,6 +144,24 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
       return;
     }
 
+    if (minAmp == null || maxAmp == null || minAmp < 0 || maxAmp <= 0 || minAmp >= maxAmp) {
+      UIHelpers.showSnackBar(
+        context,
+        message: 'Please enter valid Min and Max Ampere values (Min < Max)',
+        color: AppColors.error,
+      );
+      return;
+    }
+
+    if (minVolt == null || maxVolt == null || minVolt < 0 || maxVolt <= 0 || minVolt >= maxVolt) {
+      UIHelpers.showSnackBar(
+        context,
+        message: 'Please enter valid Min and Max Voltage values (Min < Max)',
+        color: AppColors.error,
+      );
+      return;
+    }
+
     try {
       await ref
           .read(bluetoothSetupProvider.notifier)
@@ -137,6 +170,10 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
             wifiPassword: wifiPassword,
             deviceName: deviceName,
             phase: selectedPhase,
+            minAmp: minAmp,
+            maxAmp: maxAmp,
+            minVolt: minVolt,
+            maxVolt: maxVolt,
           );
 
       if (!mounted) return;
@@ -177,13 +214,17 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
     ssidController.dispose();
     wifiPasswordController.dispose();
     deviceNameController.dispose();
+    minAmpereController.dispose();
+    maxAmpereController.dispose();
+    minVoltageController.dispose();
+    maxVoltageController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final Size size = MediaQuery.sizeOf(context);
-    final words = ref.watch(wordsProvider);
+    final activeLanguage = ref.watch(localeProvider);
     final AsyncValue<BluetoothSetupState> setupAsync = ref.watch(
       bluetoothSetupProvider,
     );
@@ -195,7 +236,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(words.english['arisers'] ?? 'ARISERS'),
+        title: Text(Words.get('arisers', activeLanguage)),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -215,27 +256,28 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
               buildWifiSetupCard(
                 size: size,
                 isLoading: isLoading,
-                wifiTitle: words.english['wifi setup'] ?? 'Wi-Fi Setup',
-                ssidHint:
-                    words.english['enter the wifi ssid'] ??
-                    'Enter the Wi-Fi SSID',
-                passwordHint:
-                    words.english['enter the wifi password'] ??
-                    'Enter the Wi-Fi Password',
+                wifiTitle: Words.get('wifi_setup', activeLanguage),
+                ssidHint: Words.get('enter_wifi_ssid', activeLanguage),
+                passwordHint: Words.get('enter_wifi_password', activeLanguage),
               ),
               SizedBox(height: size.height * 0.025),
               buildDeviceDetailsCard(
                 size: size,
                 isLoading: isLoading,
-                deviceNameHint:
-                    words.english['enter the device name'] ??
-                    'Enter the device name',
+                activeLanguage: activeLanguage,
+                deviceNameHint: Words.get('enter_device_name', activeLanguage),
+              ),
+              SizedBox(height: size.height * 0.025),
+              buildLimitsCard(
+                size: size,
+                isLoading: isLoading,
+                activeLanguage: activeLanguage,
               ),
               SizedBox(height: size.height * 0.035),
               CustomButton(
                 text: isLoading
                     ? setupState.connectionMessage
-                    : words.english['submit'] ?? 'Submit',
+                    : Words.get('submit', activeLanguage),
                 isLoading: isLoading,
                 backgroundColor: AppColors.primary,
                 textColor: Colors.white,
@@ -244,7 +286,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
               ),
               SizedBox(height: size.height * 0.02),
               Text(
-                'Pair the ESP32 as "arisers" in your phone Bluetooth settings before connecting.',
+                Words.get('pair_esp32_hint', activeLanguage),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
@@ -468,6 +510,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
   Widget buildDeviceDetailsCard({
     required Size size,
     required bool isLoading,
+    required AppLanguage activeLanguage,
     required String deviceNameHint,
   }) {
     return Container(
@@ -487,16 +530,16 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.settings_input_component_rounded,
                 color: AppColors.primary,
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Text(
-                'Device Details',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Words.get('device_details', activeLanguage),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -510,7 +553,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
           ),
           const SizedBox(height: 20),
           Text(
-            'Select Phase Type',
+            Words.get('select_phase_type', activeLanguage),
             style: Theme.of(
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
@@ -529,6 +572,16 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
                     title: '1 Phase',
                     phase: 1,
                     leftSide: true,
+                    rightSide: false,
+                    enabled: !isLoading,
+                  ),
+                ),
+                Expanded(
+                  child: phaseButton(
+                    title: '2 Phase',
+                    phase: 2,
+                    leftSide: false,
+                    rightSide: false,
                     enabled: !isLoading,
                   ),
                 ),
@@ -537,6 +590,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
                     title: '3 Phase',
                     phase: 3,
                     leftSide: false,
+                    rightSide: true,
                     enabled: !isLoading,
                   ),
                 ),
@@ -548,10 +602,103 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
     );
   }
 
+  Widget buildLimitsCard({
+    required Size size,
+    required bool isLoading,
+    required AppLanguage activeLanguage,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.bolt_rounded,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                Words.get('ampere_voltage_limits', activeLanguage),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: CustomTextField(
+                  controller: minAmpereController,
+                  hintText: Words.get('enter_min_ampere', activeLanguage),
+                  prefixIcon: Icons.speed_rounded,
+                  enabled: !isLoading,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: CustomTextField(
+                  controller: maxAmpereController,
+                  hintText: Words.get('enter_max_ampere', activeLanguage),
+                  prefixIcon: Icons.speed_rounded,
+                  enabled: !isLoading,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: CustomTextField(
+                  controller: minVoltageController,
+                  hintText: Words.get('enter_min_voltage', activeLanguage),
+                  prefixIcon: Icons.electric_meter_rounded,
+                  enabled: !isLoading,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: CustomTextField(
+                  controller: maxVoltageController,
+                  hintText: Words.get('enter_max_voltage', activeLanguage),
+                  prefixIcon: Icons.electric_meter_rounded,
+                  enabled: !isLoading,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.done,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget phaseButton({
     required String title,
     required int phase,
     required bool leftSide,
+    required bool rightSide,
     required bool enabled,
   }) {
     final bool selected = selectedPhase == phase;
@@ -566,7 +713,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
           : null,
       borderRadius: BorderRadius.horizontal(
         left: leftSide ? const Radius.circular(14) : Radius.zero,
-        right: !leftSide ? const Radius.circular(14) : Radius.zero,
+        right: rightSide ? const Radius.circular(14) : Radius.zero,
       ),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -575,7 +722,7 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
           color: selected ? AppColors.primary : Colors.transparent,
           borderRadius: BorderRadius.horizontal(
             left: leftSide ? const Radius.circular(14) : Radius.zero,
-            right: !leftSide ? const Radius.circular(14) : Radius.zero,
+            right: rightSide ? const Radius.circular(14) : Radius.zero,
           ),
         ),
         child: Row(
@@ -583,14 +730,14 @@ class _BluetoothPageState extends ConsumerState<BluetoothPage> {
           children: [
             Icon(
               selected ? Icons.check_circle_rounded : Icons.circle_outlined,
-              size: 19,
+              size: 17,
               color: selected ? Colors.white : Colors.grey.shade700,
             ),
-            const SizedBox(width: 7),
+            const SizedBox(width: 5),
             Text(
               title,
               style: TextStyle(
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
                 color: selected ? Colors.white : Colors.black87,
               ),

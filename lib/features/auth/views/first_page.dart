@@ -11,12 +11,12 @@ class FirstPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final words = ref.watch(wordsProvider);
+    final activeLanguage = ref.watch(localeProvider);
     final Size size = MediaQuery.sizeOf(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(words.english['arisers'] ?? 'ARISERS'),
+        title: Text(Words.get('arisers', activeLanguage)),
         leading: Padding(
           padding: const EdgeInsets.all(8),
           child: ClipRRect(
@@ -53,7 +53,7 @@ class FirstPage extends ConsumerWidget {
                 children: [
                   const SizedBox(height: 10),
                   Text(
-                    words.english['arisers'] ?? 'ARISERS',
+                    Words.get('arisers', activeLanguage),
                     style: const TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -62,14 +62,14 @@ class FirstPage extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Smart Controller Application',
+                  Text(
+                    Words.get('smart_controller_app', activeLanguage),
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   const SizedBox(height: 36),
                   CustomButton(
-                    text: words.english['login'] ?? 'Login',
+                    text: Words.get('login', activeLanguage),
                     icon: Icons.login_rounded,
                     onPressed: () {
                       Navigator.push(
@@ -80,7 +80,7 @@ class FirstPage extends ConsumerWidget {
                   ),
                   const SizedBox(height: 20),
                   CustomButton(
-                    text: words.english['signup'] ?? 'Sign Up',
+                    text: Words.get('signup', activeLanguage),
                     icon: Icons.person_add_rounded,
                     onPressed: () {
                       Navigator.push(
@@ -89,6 +89,7 @@ class FirstPage extends ConsumerWidget {
                       );
                     },
                   ),
+
                   const SizedBox(height: 10),
                 ],
               ),

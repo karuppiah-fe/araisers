@@ -1,3 +1,5 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -56,6 +58,45 @@ class SessionNotifier extends Notifier<SessionState> {
       isLoggedIn: true,
       username: username,
       userKey: userKey,
+    );
+  }
+
+  Future<void> updateCredentials({
+    required String newUsername,
+    required String newPassword,
+  }) async {
+    final String? currentKey = _box.get('userKey')?.toString();
+
+    // 1. Update Firebase Realtime Database
+    if (currentKey != null && currentKey.isNotEmpty) {
+      try {
+        final ref = FirebaseDatabase.instance.ref('arisers/$currentKey');
+        final Map<String, dynamic> updates = {'username': newUsername};
+        if (newPassword.isNotEmpty) {
+          updates['password'] = newPassword;
+        }
+        await ref.update(updates);
+      } catch (_) {}
+    }
+
+    // 2. Update Firebase Auth user profile if logged in
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        if (newPassword.isNotEmpty) {
+          await user.updatePassword(newPassword);
+        }
+        await user.updateDisplayName(newUsername);
+      }
+    } catch (_) {}
+
+    // 3. Update Hive Session Box
+    await _box.put('username', newUsername);
+
+    state = SessionState(
+      isLoggedIn: true,
+      username: newUsername,
+      userKey: currentKey ?? state.userKey,
     );
   }
 

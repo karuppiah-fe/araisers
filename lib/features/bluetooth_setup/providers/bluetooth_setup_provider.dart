@@ -91,17 +91,28 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
   }
 
   Future<void> requestBluetoothPermission() async {
-    final PermissionStatus permissionStatus = await Permission.bluetoothConnect
-        .request();
+    final Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetoothConnect,
+      Permission.bluetoothScan,
+    ].request();
 
-    if (permissionStatus.isPermanentlyDenied) {
+    final bool connectDenied =
+        statuses[Permission.bluetoothConnect]?.isDenied == true ||
+        statuses[Permission.bluetoothConnect]?.isPermanentlyDenied == true;
+
+    final bool scanDenied =
+        statuses[Permission.bluetoothScan]?.isDenied == true ||
+        statuses[Permission.bluetoothScan]?.isPermanentlyDenied == true;
+
+    if (statuses[Permission.bluetoothConnect]?.isPermanentlyDenied == true ||
+        statuses[Permission.bluetoothScan]?.isPermanentlyDenied == true) {
       throw Exception(
-        'Bluetooth permission is permanently denied. '
-        'Open app settings and enable Nearby devices.',
+        'Bluetooth permissions are permanently denied. '
+        'Please open app settings and enable Nearby devices.',
       );
     }
 
-    if (permissionStatus.isDenied) {
+    if (connectDenied && scanDenied) {
       throw Exception('Bluetooth permission was denied.');
     }
   }
@@ -141,33 +152,17 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
     }
   }
 
-  Future<BluetoothDevice> findPairedArisersDevice() async {
-    final List<BluetoothDevice> bondedDevices = await _bluetooth
-        .getBondedDevices();
-
-    if (bondedDevices.isEmpty) {
-      throw Exception(
-        'No paired Bluetooth device found. '
-        'Pair with "arisers" in phone Bluetooth settings first.',
-      );
-    }
+  Future<List<BluetoothDevice>> getPairedArisersDevices() async {
+    final List<BluetoothDevice> bondedDevices = await _bluetooth.getBondedDevices();
+    final List<BluetoothDevice> matching = [];
 
     for (final BluetoothDevice device in bondedDevices) {
       final String deviceName = device.name?.trim().toLowerCase() ?? '';
-
-      if (deviceName == arisersBluetoothName.toLowerCase()) {
-        return device;
+      if (deviceName.contains('arisers') || deviceName.contains('esp32')) {
+        matching.add(device);
       }
     }
-
-    final String bondedDeviceNames = bondedDevices
-        .map((BluetoothDevice device) => device.name ?? 'Unknown device')
-        .join(', ');
-
-    throw Exception(
-      'Paired device "$arisersBluetoothName" was not found. '
-      'Available paired devices: $bondedDeviceNames',
-    );
+    return matching;
   }
 
   Future<void> connectToArisers() async {
@@ -182,7 +177,7 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
         isScanning: true,
         isConnected: false,
         isSending: false,
-        connectionMessage: 'Connecting to arisers...',
+        connectionMessage: 'Scanning paired Bluetooth devices...',
       ),
     );
 
@@ -190,40 +185,63 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
       await requestBluetoothPermission();
       await ensureBluetoothEnabled();
 
-      final BluetoothDevice device = await findPairedArisersDevice();
+      final List<BluetoothDevice> matchingDevices = await getPairedArisersDevices();
+
+      if (matchingDevices.isEmpty) {
+        final List<BluetoothDevice> allBonded = await _bluetooth.getBondedDevices();
+        final String bondedNames = allBonded.isEmpty
+            ? 'None'
+            : allBonded.map((d) => d.name ?? 'Unknown').join(', ');
+        throw Exception(
+          'No paired "arisers" or "ESP32" device found. '
+          'Pair with your ESP32 in phone Bluetooth settings first. (Paired on phone: $bondedNames)',
+        );
+      }
 
       await closeCurrentConnection();
 
-      updateState(
-        currentState.copyWith(
-          isScanning: true,
-          isConnected: false,
-          connectedDeviceName: device.name ?? arisersBluetoothName,
-          connectedDeviceAddress: device.address,
-          connectionMessage: 'Opening Bluetooth connection...',
-        ),
-      );
+      BluetoothConnection? activeConnection;
+      BluetoothDevice? connectedDevice;
 
-      final BluetoothConnection connection =
-          await BluetoothConnection.toAddress(device.address).timeout(
-            const Duration(seconds: 15),
+      for (final device in matchingDevices) {
+        updateState(
+          currentState.copyWith(
+            connectionMessage: 'Connecting to ${device.name ?? "ESP32"}...',
+            connectedDeviceName: device.name ?? arisersBluetoothName,
+            connectedDeviceAddress: device.address,
+          ),
+        );
+
+        try {
+          final connection = await BluetoothConnection.toAddress(device.address).timeout(
+            const Duration(seconds: 8),
             onTimeout: () {
-              throw TimeoutException('Bluetooth connection timed out.');
+              throw TimeoutException('Connection to ${device.name} timed out.');
             },
           );
 
-      if (!connection.isConnected) {
-        throw Exception('Could not connect to arisers.');
+          if (connection.isConnected) {
+            activeConnection = connection;
+            connectedDevice = device;
+            break;
+          }
+        } catch (e) {
+          debugPrint('Could not connect to ${device.name} (${device.address}): $e');
+        }
       }
 
-      _connection = connection;
+      if (activeConnection == null || connectedDevice == null) {
+        throw Exception('Could not connect to any paired ESP32 device. Ensure your ESP32 is powered ON and nearby.');
+      }
+
+      _connection = activeConnection;
       _receiveBuffer = '';
 
-      listenForIncomingData(connection);
+      listenForIncomingData(activeConnection);
 
       await saveBluetoothDevice(
-        deviceName: device.name ?? arisersBluetoothName,
-        deviceAddress: device.address,
+        deviceName: connectedDevice.name ?? arisersBluetoothName,
+        deviceAddress: connectedDevice.address,
       );
 
       updateState(
@@ -231,26 +249,28 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
           isScanning: false,
           isConnected: true,
           isSending: false,
-          connectedDeviceName: device.name ?? arisersBluetoothName,
-          connectedDeviceAddress: device.address,
-          connectionMessage: 'Bluetooth connected',
+          connectedDeviceName: connectedDevice.name ?? arisersBluetoothName,
+          connectedDeviceAddress: connectedDevice.address,
+          connectionMessage: 'Bluetooth connected to ${connectedDevice.name}',
         ),
       );
     } catch (error) {
       await closeCurrentConnection();
+
+      final String cleanErrMsg = error.toString().contains('read failed') || error.toString().contains('socket')
+          ? 'ESP32 Bluetooth device is powered OFF or unreachable'
+          : error.toString().replaceFirst('Exception: ', '');
 
       updateState(
         currentState.copyWith(
           isScanning: false,
           isConnected: false,
           isSending: false,
-          connectionMessage: 'Bluetooth connection failed',
+          connectionMessage: cleanErrMsg,
           clearDeviceName: true,
           clearDeviceAddress: true,
         ),
       );
-
-      rethrow;
     }
   }
 
@@ -384,14 +404,30 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
     );
   }
 
+  String _sanitizeDeviceName(String value) {
+    String output = value.trim().toLowerCase();
+    output = output.replaceAll(RegExp(r'[/+#\s\r\n]+'), '-');
+    while (output.startsWith('-')) {
+      output = output.substring(1);
+    }
+    while (output.endsWith('-')) {
+      output = output.substring(0, output.length - 1);
+    }
+    return output;
+  }
+
   Future<void> sendConfiguration({
     required String wifiSsid,
     required String wifiPassword,
     required String deviceName,
     required int phase,
+    required double minAmp,
+    required double maxAmp,
+    required double minVolt,
+    required double maxVolt,
   }) async {
     final String cleanSsid = wifiSsid.trim();
-    final String cleanDeviceName = deviceName.trim();
+    final String cleanDeviceName = _sanitizeDeviceName(deviceName);
 
     if (cleanSsid.isEmpty) {
       throw Exception('Please enter Wi-Fi SSID.');
@@ -405,8 +441,16 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
       throw Exception('Please enter device name.');
     }
 
-    if (phase != 1 && phase != 3) {
-      throw Exception('Please select 1 Phase or 3 Phase.');
+    if (phase < 1 || phase > 3) {
+      throw Exception('Please select Phase Type (1, 2, or 3 Phase).');
+    }
+
+    if (minAmp < 0 || maxAmp <= 0 || minAmp >= maxAmp) {
+      throw Exception('Please enter valid Min and Max Ampere values.');
+    }
+
+    if (minVolt < 0 || maxVolt <= 0 || minVolt >= maxVolt) {
+      throw Exception('Please enter valid Min and Max Voltage values.');
     }
 
     if (!isConnectionActive || !currentState.isConnected) {
@@ -424,6 +468,10 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
       'pass': wifiPassword,
       'device': cleanDeviceName,
       'phase': phase,
+      'minAmp': minAmp,
+      'maxAmp': maxAmp,
+      'minVolt': minVolt,
+      'maxVolt': maxVolt,
     };
 
     final String jsonData = '${jsonEncode(configuration)}\n';
@@ -478,6 +526,10 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
         wifiSsid: cleanSsid,
         deviceName: cleanDeviceName,
         phase: phase,
+        minAmp: minAmp,
+        maxAmp: maxAmp,
+        minVolt: minVolt,
+        maxVolt: maxVolt,
       );
 
       String completionMessage = 'Configured and saved locally';
@@ -487,6 +539,10 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
           wifiSsid: cleanSsid,
           deviceName: cleanDeviceName,
           phase: phase,
+          minAmp: minAmp,
+          maxAmp: maxAmp,
+          minVolt: minVolt,
+          maxVolt: maxVolt,
         );
 
         final Box<dynamic> sessionBox = Hive.box(SessionNotifier.boxName);
@@ -502,6 +558,10 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
           wifiSsid: cleanSsid,
           deviceName: cleanDeviceName,
           phase: phase,
+          minAmp: minAmp,
+          maxAmp: maxAmp,
+          minVolt: minVolt,
+          maxVolt: maxVolt,
           errorMessage: firebaseError.toString(),
         );
 
@@ -520,11 +580,9 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
         currentState.copyWith(
           isSending: false,
           isConnected: isConnectionActive,
-          connectionMessage: 'Configuration failed',
+          connectionMessage: 'Configuration failed: Device unreachable',
         ),
       );
-
-      rethrow;
     } finally {
       _responseCompleter = null;
     }
@@ -544,12 +602,20 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
     required String wifiSsid,
     required String deviceName,
     required int phase,
+    required double minAmp,
+    required double maxAmp,
+    required double minVolt,
+    required double maxVolt,
   }) async {
     final Box<dynamic> sessionBox = Hive.box(SessionNotifier.boxName);
 
     await sessionBox.put('deviceName', deviceName);
     await sessionBox.put('wifiSsid', wifiSsid);
     await sessionBox.put('phase', phase);
+    await sessionBox.put('minAmp', minAmp);
+    await sessionBox.put('maxAmp', maxAmp);
+    await sessionBox.put('minVolt', minVolt);
+    await sessionBox.put('maxVolt', maxVolt);
     await sessionBox.put('deviceConfigured', true);
     await sessionBox.put('configuredAt', DateTime.now().toIso8601String());
   }
@@ -558,6 +624,10 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
     required String wifiSsid,
     required String deviceName,
     required int phase,
+    required double minAmp,
+    required double maxAmp,
+    required double minVolt,
+    required double maxVolt,
     required String errorMessage,
   }) async {
     final Box<dynamic> sessionBox = Hive.box(SessionNotifier.boxName);
@@ -567,6 +637,10 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
       'deviceName': deviceName,
       'wifiSsid': wifiSsid,
       'phase': phase,
+      'minAmp': minAmp,
+      'maxAmp': maxAmp,
+      'minVolt': minVolt,
+      'maxVolt': maxVolt,
       'configuredAt': DateTime.now().toIso8601String(),
       'lastSyncError': errorMessage,
     });
@@ -576,6 +650,10 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
     required String wifiSsid,
     required String deviceName,
     required int phase,
+    required double minAmp,
+    required double maxAmp,
+    required double minVolt,
+    required double maxVolt,
   }) async {
     final Box<dynamic> sessionBox = Hive.box(SessionNotifier.boxName);
 
@@ -585,14 +663,20 @@ class BluetoothSetupNotifier extends AsyncNotifier<BluetoothSetupState> {
       throw Exception('User session was not found. Please log in again.');
     }
 
+    final String cleanKey = userKey.trim().replaceAll(RegExp(r'[.#$\[\]/]'), '_');
+
     final DatabaseReference reference = FirebaseDatabase.instance.ref(
-      'arisers/$userKey/deviceInfo',
+      'arisers/$cleanKey/deviceInfo',
     );
 
     await reference.update({
       'deviceName': deviceName,
       'wifiSsid': wifiSsid,
       'phase': phase,
+      'minAmp': minAmp,
+      'maxAmp': maxAmp,
+      'minVolt': minVolt,
+      'maxVolt': maxVolt,
       'bluetoothName': arisersBluetoothName,
       'bluetoothType': 'classic',
       'configured': true,

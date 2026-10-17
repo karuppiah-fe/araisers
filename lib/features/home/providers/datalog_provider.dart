@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -8,6 +9,7 @@ class DataLogEntry {
   final String motorName; // 'Motor 1' or 'Motor 2'
   final String action; // 'ON' or 'OFF'
   final String trigger; // 'Manual', 'Scheduler', 'Cyclic', 'Trip'
+  final String userName; // User who performed the action
   final String details;
 
   DataLogEntry({
@@ -16,6 +18,7 @@ class DataLogEntry {
     required this.motorName,
     required this.action,
     required this.trigger,
+    this.userName = 'System',
     this.details = '',
   });
 
@@ -25,6 +28,7 @@ class DataLogEntry {
         'motorName': motorName,
         'action': action,
         'trigger': trigger,
+        'userName': userName,
         'details': details,
       };
 
@@ -34,6 +38,7 @@ class DataLogEntry {
         motorName: json['motorName'] ?? '',
         action: json['action'] ?? '',
         trigger: json['trigger'] ?? '',
+        userName: json['userName'] ?? 'System',
         details: json['details'] ?? '',
       );
 }
@@ -48,6 +53,7 @@ class DataLogNotifier extends StateNotifier<List<DataLogEntry>> {
 
   void _loadLogs() {
     try {
+      if (!Hive.isBoxOpen(_boxName)) return;
       final box = Hive.box(_boxName);
       final rawList = box.get(_key, defaultValue: []);
       if (rawList is List) {
@@ -68,18 +74,46 @@ class DataLogNotifier extends StateNotifier<List<DataLogEntry>> {
     } catch (_) {}
   }
 
+  String _resolveUserName(String providedUserName) {
+    if (providedUserName != 'System' && providedUserName.isNotEmpty) {
+      return providedUserName;
+    }
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        if (user.displayName != null && user.displayName!.isNotEmpty) {
+          return user.displayName!;
+        }
+        if (user.email != null && user.email!.isNotEmpty) {
+          return user.email!;
+        }
+      }
+      if (Hive.isBoxOpen(_boxName)) {
+        final String? sessionUser = Hive.box(_boxName).get('userKey');
+        if (sessionUser != null && sessionUser.isNotEmpty) {
+          return sessionUser;
+        }
+      }
+    } catch (_) {}
+    return providedUserName;
+  }
+
   Future<void> addLog({
     required String motorName,
     required String action,
     required String trigger,
+    String userName = 'System',
     String details = '',
   }) async {
+    final String resolvedUser = _resolveUserName(userName);
+
     final newEntry = DataLogEntry(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       timestamp: DateTime.now(),
       motorName: motorName,
       action: action,
       trigger: trigger,
+      userName: resolvedUser,
       details: details,
     );
 
@@ -95,6 +129,7 @@ class DataLogNotifier extends StateNotifier<List<DataLogEntry>> {
 
   void _saveLogs() {
     try {
+      if (!Hive.isBoxOpen(_boxName)) return;
       final box = Hive.box(_boxName);
       final rawList = state.map((log) => jsonEncode(log.toJson())).toList();
       box.put(_key, rawList);

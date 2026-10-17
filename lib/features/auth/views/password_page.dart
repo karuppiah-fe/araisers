@@ -43,6 +43,22 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
     });
 
     try {
+      final Box<dynamic> sessionBox = Hive.box(SessionNotifier.boxName);
+      final String? userKey = sessionBox.get('userKey')?.toString();
+
+      if (userKey != null && userKey.trim().isNotEmpty) {
+        final DatabaseReference userRef = FirebaseDatabase.instance.ref(
+          'arisers/$userKey/password',
+        );
+        final DataSnapshot snapshot = await userRef.get();
+        if (snapshot.exists && snapshot.value != null) {
+          final String savedPassword = snapshot.value.toString().trim();
+          if (password != savedPassword) {
+            throw Exception('Incorrect password. Please try again.');
+          }
+        }
+      }
+
       final bool deviceAlreadyConfigured = await checkDeviceConfiguration();
 
       if (!mounted) return;
@@ -100,7 +116,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
           deviceData['deviceName']?.toString().trim() ?? '';
       final String wifiSsid = deviceData['wifiSsid']?.toString().trim() ?? '';
       final int? phase = int.tryParse(deviceData['phase']?.toString() ?? '');
-      final bool validPhase = phase == 1 || phase == 3;
+      final bool validPhase = phase == 1 || phase == 2 || phase == 3;
 
       if (configured &&
           deviceName.isNotEmpty &&
@@ -151,7 +167,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
             final int? phase = int.tryParse(
               devInfo['phase']?.toString() ?? '',
             );
-            final bool validPhase = phase == 1 || phase == 3;
+            final bool validPhase = phase == 1 || phase == 2 || phase == 3;
 
             if (configured &&
                 deviceName.isNotEmpty &&
@@ -193,12 +209,12 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
 
   @override
   Widget build(BuildContext context) {
-    final words = ref.watch(wordsProvider);
+    final activeLanguage = ref.watch(localeProvider);
     final Size size = MediaQuery.sizeOf(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(words.english['arisers'] ?? 'ARISERS'),
+        title: Text(Words.get('arisers', activeLanguage)),
       ),
       body: SafeArea(
         child: Center(
@@ -244,7 +260,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    words.english['password'] ?? 'Password',
+                    Words.get('password', activeLanguage),
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -252,17 +268,15 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Enter your password to continue',
+                  Text(
+                    Words.get('enter_password', activeLanguage),
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   const SizedBox(height: 24),
                   CustomTextField(
                     controller: passwordController,
-                    hintText:
-                        words.english['enter the password'] ??
-                        'Enter the password',
+                    hintText: Words.get('enter_password', activeLanguage),
                     prefixIcon: Icons.password_rounded,
                     enabled: !isChecking,
                     obscureText: hidePassword,
@@ -290,7 +304,7 @@ class _PasswordPageState extends ConsumerState<PasswordPage> {
                   ),
                   const SizedBox(height: 28),
                   CustomButton(
-                    text: words.english['submit'] ?? 'Submit',
+                    text: Words.get('submit', activeLanguage),
                     isLoading: isChecking,
                     onPressed: submitPassword,
                   ),

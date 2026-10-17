@@ -88,15 +88,51 @@ class SchedulersView extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    schedule.motorName,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        schedule.motorName,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: schedule.date != null ? Colors.blue.shade50 : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: schedule.date != null ? Colors.blue.shade200 : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.calendar_today_rounded,
+                              size: 11,
+                              color: schedule.date != null ? Colors.blue.shade800 : Colors.grey.shade700,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              schedule.date != null
+                                  ? '${schedule.date!.day.toString().padLeft(2, '0')}/${schedule.date!.month.toString().padLeft(2, '0')}/${schedule.date!.year}'
+                                  : 'Everyday',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: schedule.date != null ? Colors.blue.shade900 : Colors.grey.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Text(
@@ -169,6 +205,7 @@ class SchedulersView extends ConsumerWidget {
     String selectedMotor = 'Motor 1';
     TimeOfDay selectedOnTime = const TimeOfDay(hour: 6, minute: 0);
     TimeOfDay selectedOffTime = const TimeOfDay(hour: 7, minute: 30);
+    DateTime? selectedDate;
 
     showDialog(
       context: context,
@@ -195,8 +232,48 @@ class SchedulersView extends ConsumerWidget {
                   if (val != null) setState(() => selectedMotor = val);
                 },
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Schedule Date'),
+                subtitle: Text(
+                  selectedDate == null
+                      ? 'Everyday (Daily Recurring)'
+                      : '${selectedDate!.day.toString().padLeft(2, '0')}/${selectedDate!.month.toString().padLeft(2, '0')}/${selectedDate!.year}',
+                  style: TextStyle(
+                    color: selectedDate != null ? AppColors.primary : Colors.grey.shade600,
+                    fontWeight: selectedDate != null ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (selectedDate != null)
+                      IconButton(
+                        icon: const Icon(Icons.clear_rounded, color: Colors.grey, size: 20),
+                        tooltip: 'Clear Date (Make Daily)',
+                        onPressed: () => setState(() => selectedDate = null),
+                      ),
+                    const Icon(
+                      Icons.calendar_month_rounded,
+                      color: AppColors.primary,
+                    ),
+                  ],
+                ),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate ?? DateTime.now(),
+                    firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked != null) {
+                    setState(() => selectedDate = picked);
+                  }
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
                 title: Text(Words.get('on_time', activeLanguage)),
                 trailing: Chip(
                   label: Text(_formatTime(selectedOnTime)),
@@ -213,6 +290,7 @@ class SchedulersView extends ConsumerWidget {
                 },
               ),
               ListTile(
+                contentPadding: EdgeInsets.zero,
                 title: Text(Words.get('off_time', activeLanguage)),
                 trailing: Chip(
                   label: Text(_formatTime(selectedOffTime)),
@@ -245,6 +323,7 @@ class SchedulersView extends ConsumerWidget {
                       motorName: selectedMotor,
                       onTime: selectedOnTime,
                       offTime: selectedOffTime,
+                      date: selectedDate,
                     );
                 Navigator.pop(dialogContext);
               },

@@ -1,4 +1,4 @@
-package com.example.arisers
+package com.arisers.app
 
 import io.flutter.embedding.android.FlutterActivity
 

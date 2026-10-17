@@ -17,15 +17,32 @@
     <uses-permission
         android:name="android.permission.BLUETOOTH_CONNECT" />
 
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Closed App & Background Push Notification Permissions -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Bluetooth Classic -->
     <uses-feature
         android:name="android.hardware.bluetooth"
         android:required="true" />
 
     <application
-        android:label="arisers"
+        android:label="KAT"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <!-- Firebase High Importance Channel for Closed App Alerts -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="iot_alerts_channel" />
 
         <activity
             android:name=".MainActivity"

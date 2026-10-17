@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arisers/core/theme/app_colors.dart';
 import 'package:arisers/features/home/providers/cyclic_timer_provider.dart';
+import 'package:arisers/features/home/providers/device_online_provider.dart';
 import 'package:arisers/features/localization/providers/words_provider.dart';
 
 class CyclicTimerView extends ConsumerWidget {
@@ -11,6 +12,7 @@ class CyclicTimerView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cyclicState = ref.watch(cyclicTimerProvider);
     final activeLanguage = ref.watch(localeProvider);
+    final isDeviceOnline = ref.watch(deviceOnlineProvider);
     final isRunningOrPaused =
         cyclicState.status == CyclicStatus.running ||
         cyclicState.status == CyclicStatus.paused;
@@ -44,7 +46,7 @@ class CyclicTimerView extends ConsumerWidget {
                 child: Column(
                   children: [
                     Text(
-                      _getStatusTitle(cyclicState, activeLanguage),
+                      _getStatusTitle(cyclicState, activeLanguage, isDeviceOnline),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -203,7 +205,20 @@ class CyclicTimerView extends ConsumerWidget {
                       if (isRunningOrPaused) {
                         ref.read(cyclicTimerProvider.notifier).stopCycle();
                       } else {
-                        ref.read(cyclicTimerProvider.notifier).startCycle();
+                        final isDeviceOnline = ref.read(deviceOnlineProvider);
+                        final rVolt = ref.read(rVoltageProvider);
+                        final bool isPowerOff = rVolt < 150.0 || !isDeviceOnline;
+                        ref.read(cyclicTimerProvider.notifier).startCycle(isPowerCut: isPowerOff);
+
+                        if (isPowerOff) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('⚡ Device Offline / Power Cut: Cyclic Run Queued! Config sent via MQTT.'),
+                              backgroundColor: Colors.amber,
+                              duration: Duration(seconds: 4),
+                            ),
+                          );
+                        }
                       }
                     },
                   ),
@@ -265,12 +280,19 @@ class CyclicTimerView extends ConsumerWidget {
     );
   }
 
-  String _getStatusTitle(CyclicState state, AppLanguage activeLanguage) {
+  String _getStatusTitle(CyclicState state, AppLanguage activeLanguage, bool isDeviceOnline) {
+    if (!isDeviceOnline && state.status == CyclicStatus.idle) {
+      return '🔴 ESP32 Device Offline';
+    }
     switch (state.status) {
       case CyclicStatus.running:
-        return Words.get('cycle_running', activeLanguage);
+        return state.isRunningPhase
+            ? '${Words.get('cycle_running', activeLanguage)} (${state.motorName} ON)'
+            : 'Pause Phase (${state.motorName} OFF)';
       case CyclicStatus.paused:
-        return Words.get('cycle_paused', activeLanguage);
+        return state.isPausedByPower
+            ? '⚠️ Device Offline / Power Cut (Timer Paused)'
+            : Words.get('cycle_paused', activeLanguage);
       case CyclicStatus.completed:
         return Words.get('cycle_completed', activeLanguage);
       case CyclicStatus.idle:

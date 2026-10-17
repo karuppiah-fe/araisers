@@ -99,13 +99,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final words = ref.watch(wordsProvider);
+    final activeLanguage = ref.watch(localeProvider);
     final loginState = ref.watch(loginProvider);
     final Size size = MediaQuery.sizeOf(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(words.english['arisers'] ?? 'ARISERS'),
+        title: Text(Words.get('arisers', activeLanguage)),
       ),
       body: SafeArea(
         child: Center(
@@ -137,7 +137,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    words.english['login'] ?? 'Login',
+                    Words.get('login', activeLanguage),
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -147,9 +147,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   const SizedBox(height: 24),
                   CustomTextField(
                     controller: usernameController,
-                    hintText:
-                        words.english['enter the username'] ??
-                        'Enter the username',
+                    hintText: Words.get('enter_username', activeLanguage),
                     prefixIcon: Icons.person_rounded,
                     enabled: !loginState.isLoading,
                     textInputAction: TextInputAction.next,
@@ -158,9 +156,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   const SizedBox(height: 18),
                   CustomTextField(
                     controller: passwordController,
-                    hintText:
-                        words.english['enter the password'] ??
-                        'Enter the password',
+                    hintText: Words.get('enter_password', activeLanguage),
                     prefixIcon: Icons.lock_rounded,
                     enabled: !loginState.isLoading,
                     obscureText: hidePassword,
@@ -190,7 +186,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   ),
                   const SizedBox(height: 28),
                   CustomButton(
-                    text: words.english['login'] ?? 'Login',
+                    text: Words.get('login', activeLanguage),
                     isLoading: loginState.isLoading,
                     onPressed: loginUser,
                   ),

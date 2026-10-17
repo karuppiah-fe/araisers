@@ -12,6 +12,13 @@ class MotorControllerWidget extends StatefulWidget {
     required this.baseTopic,
     this.isVoltageValid = true,
     this.faultMessage = '',
+    this.rCurrent = 0.0,
+    this.yCurrent = 0.0,
+    this.bCurrent = 0.0,
+    this.motor1ExternalStatus,
+    this.motor2ExternalStatus,
+    this.motor1TelemetryState,
+    this.motor2TelemetryState,
     this.onLogEvent,
     super.key,
   });
@@ -20,6 +27,13 @@ class MotorControllerWidget extends StatefulWidget {
   final String baseTopic;
   final bool isVoltageValid;
   final String faultMessage;
+  final double rCurrent;
+  final double yCurrent;
+  final double bCurrent;
+  final String? motor1ExternalStatus;
+  final String? motor2ExternalStatus;
+  final String? motor1TelemetryState;
+  final String? motor2TelemetryState;
   final Function(String motorName, String action, String trigger)? onLogEvent;
 
   @override
@@ -35,8 +49,14 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
   bool _motor1PulseActive = false;
   bool _motor2PulseActive = false;
 
-  String _motor1Status = 'Unknown';
-  String _motor2Status = 'Unknown';
+  bool _motor1IsManual = false;
+  bool _motor2IsManual = false;
+
+  DateTime? _lastAppCommandTimeMotor1;
+  DateTime? _lastAppCommandTimeMotor2;
+
+  String _motor1Status = 'OFF';
+  String _motor2Status = 'OFF';
 
   bool get _isConnected {
     return widget.mqttClient?.connectionStatus?.state ==
@@ -52,6 +72,23 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
   void initState() {
     super.initState();
     _subscribeToMotorStatus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _evaluateExternalStates(null);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant MotorControllerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_statusSubscription == null && _isConnected) {
+      _subscribeToMotorStatus();
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _evaluateExternalStates(oldWidget);
+      _evaluateManualStartFromCurrent();
+    });
   }
 
   @override
@@ -97,16 +134,162 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
 
       if (!mounted) return;
 
+      if (topic == _motor1StatusTopic) {
+        _updateMotor1StateFromExternal(payload);
+      } else if (topic == _motor2StatusTopic) {
+        _updateMotor2StateFromExternal(payload);
+      }
+    }
+  }
+
+  void _evaluateExternalStates(MotorControllerWidget? oldWidget) {
+    if (widget.motor1ExternalStatus != null) {
+      _updateMotor1StateFromExternal(widget.motor1ExternalStatus!);
+    } else if (widget.motor1TelemetryState != null) {
+      _updateMotor1StateFromExternal(widget.motor1TelemetryState!);
+    }
+
+    if (widget.motor2ExternalStatus != null) {
+      _updateMotor2StateFromExternal(widget.motor2ExternalStatus!);
+    } else if (widget.motor2TelemetryState != null) {
+      _updateMotor2StateFromExternal(widget.motor2TelemetryState!);
+    }
+  }
+
+  void _updateMotor1StateFromExternal(String rawPayload) {
+    if (!mounted) return;
+
+    final String extStatus =
+        (widget.motor1ExternalStatus ?? widget.motor1TelemetryState ?? '')
+            .toUpperCase();
+    final bool isOffline =
+        rawPayload.toUpperCase() == 'OFFLINE' || extStatus == 'OFFLINE';
+
+    if (isOffline) {
       setState(() {
-        if (topic == _motor1StatusTopic) {
-          _motor1Status = payload;
-          _motor1On = _isMotorOnPayload(payload);
-        } else if (topic == _motor2StatusTopic) {
-          _motor2Status = payload;
-          _motor2On = _isMotorOnPayload(payload);
+        _motor1On = false;
+        _motor1IsManual = false;
+        _motor1Status = 'OFFLINE';
+      });
+      return;
+    }
+
+    final bool isOn = _isMotorOnPayload(rawPayload);
+    final bool isRecentCmd = _isAppCommandRecent(1);
+
+    if (!isRecentCmd || isOn == _motor1On) {
+      setState(() {
+        _motor1On = isOn;
+        if (!isOn) {
+          _motor1IsManual = false;
+          _motor1Status = rawPayload.toUpperCase() == 'OFF' ? 'OFF' : rawPayload;
+        } else {
+          if (!isRecentCmd) {
+            _motor1IsManual = false;
+          }
+          if (!_motor1IsManual || rawPayload.toUpperCase() == 'ON') {
+            _motor1Status = rawPayload.toUpperCase() == 'ON' ? 'ON' : rawPayload;
+          }
         }
       });
     }
+  }
+
+  void _updateMotor2StateFromExternal(String rawPayload) {
+    if (!mounted) return;
+
+    final String extStatus =
+        (widget.motor2ExternalStatus ?? widget.motor2TelemetryState ?? '')
+            .toUpperCase();
+    final bool isOffline =
+        rawPayload.toUpperCase() == 'OFFLINE' || extStatus == 'OFFLINE';
+
+    if (isOffline) {
+      setState(() {
+        _motor2On = false;
+        _motor2IsManual = false;
+        _motor2Status = 'OFFLINE';
+      });
+      return;
+    }
+
+    final bool isOn = _isMotorOnPayload(rawPayload);
+    final bool isRecentCmd = _isAppCommandRecent(2);
+
+    if (!isRecentCmd || isOn == _motor2On) {
+      setState(() {
+        _motor2On = isOn;
+        if (!isOn) {
+          _motor2IsManual = false;
+          _motor2Status = rawPayload.toUpperCase() == 'OFF' ? 'OFF' : rawPayload;
+        } else {
+          if (!isRecentCmd) {
+            _motor2IsManual = false;
+          }
+          if (!_motor2IsManual || rawPayload.toUpperCase() == 'ON') {
+            _motor2Status = rawPayload.toUpperCase() == 'ON' ? 'ON' : rawPayload;
+          }
+        }
+      });
+    }
+  }
+
+  void _evaluateManualStartFromCurrent() {
+    // Only evaluate physical starter box manual start after telemetry state is available and device is online
+    if (widget.motor1TelemetryState == null && widget.motor2TelemetryState == null) {
+      return;
+    }
+    if (widget.motor1ExternalStatus == 'OFFLINE' || widget.motor1TelemetryState == 'OFFLINE') {
+      return;
+    }
+
+    final double maxCurrent = [
+      widget.rCurrent,
+      widget.yCurrent,
+      widget.bCurrent,
+    ].reduce((a, b) => a > b ? a : b);
+
+    final bool isCurrentFlowing = maxCurrent >= 0.5;
+
+    if (!mounted) return;
+
+    if (isCurrentFlowing) {
+      if (!_motor1On && !_motor2On) {
+        // Motor turned ON manually at starter box!
+        setState(() {
+          _motor1On = true;
+          _motor1IsManual = true;
+          _motor1Status = 'ON (Manual Start)';
+        });
+        widget.onLogEvent?.call('Motor 1', 'ON', 'Manual');
+      }
+    } else {
+      if (maxCurrent < 0.2) {
+        if (_motor1On && _motor1IsManual) {
+          setState(() {
+            _motor1On = false;
+            _motor1IsManual = false;
+            _motor1Status = 'OFF (Manual Stop)';
+          });
+          widget.onLogEvent?.call('Motor 1', 'OFF', 'Manual');
+        }
+        if (_motor2On && _motor2IsManual) {
+          setState(() {
+            _motor2On = false;
+            _motor2IsManual = false;
+            _motor2Status = 'OFF (Manual Stop)';
+          });
+          widget.onLogEvent?.call('Motor 2', 'OFF', 'Manual');
+        }
+      }
+    }
+  }
+
+  bool _isAppCommandRecent(int motorNum) {
+    final DateTime? lastCmd =
+        motorNum == 1 ? _lastAppCommandTimeMotor1 : _lastAppCommandTimeMotor2;
+    if (lastCmd == null) return false;
+    return DateTime.now().difference(lastCmd).inSeconds < 15;
   }
 
   bool _isMotorOnPayload(String payload) {
@@ -116,17 +299,33 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
         cleanPayload == 'RUNNING' ||
         cleanPayload == '1' ||
         cleanPayload == 'TRUE' ||
-        cleanPayload == 'START';
+        cleanPayload == 'START' ||
+        cleanPayload == 'STARTING' ||
+        cleanPayload == 'PULSING_ON';
   }
 
   Future<void> _toggleMotor1Toggle() async {
     final bool nextState = !_motor1On;
+
     if (nextState && !widget.isVoltageValid) {
       _showSnackBar(
-        'Cannot start Motor 1: Voltage out of valid range (150V - 280V)',
+        '⚠️ Cannot start Motor 1: Line voltage is out of safe range (150V - 280V required)',
       );
-      setState(() => _motor1On = false);
       return;
+    }
+
+    _lastAppCommandTimeMotor1 = DateTime.now();
+
+    if (nextState && _motor2On) {
+      await _publishMqttMessage(_motor2CommandTopic, 'OFF');
+      widget.onLogEvent?.call('Motor 2', 'OFF', 'Interlock');
+      if (mounted) {
+        setState(() {
+          _motor2On = false;
+          _motor2IsManual = false;
+          _motor2Status = 'OFF (Interlock)';
+        });
+      }
     }
 
     final String command = nextState ? 'ON' : 'OFF';
@@ -138,18 +337,33 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
 
     setState(() {
       _motor1On = nextState;
+      _motor1IsManual = false;
       _motor1Status = nextState ? 'ON (Command sent)' : 'OFF (Command sent)';
     });
   }
 
   Future<void> _toggleMotor2Toggle() async {
     final bool nextState = !_motor2On;
+
     if (nextState && !widget.isVoltageValid) {
       _showSnackBar(
-        'Cannot start Motor 2: Voltage out of valid range (150V - 280V)',
+        '⚠️ Cannot start Motor 2: Line voltage is out of safe range (150V - 280V required)',
       );
-      setState(() => _motor2On = false);
       return;
+    }
+
+    _lastAppCommandTimeMotor2 = DateTime.now();
+
+    if (nextState && _motor1On) {
+      await _publishMqttMessage(_motor1CommandTopic, 'OFF');
+      widget.onLogEvent?.call('Motor 1', 'OFF', 'Interlock');
+      if (mounted) {
+        setState(() {
+          _motor1On = false;
+          _motor1IsManual = false;
+          _motor1Status = 'OFF (Interlock)';
+        });
+      }
     }
 
     final String command = nextState ? 'ON' : 'OFF';
@@ -161,6 +375,7 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
 
     setState(() {
       _motor2On = nextState;
+      _motor2IsManual = false;
       _motor2Status = nextState ? 'ON (Command sent)' : 'OFF (Command sent)';
     });
   }
@@ -174,12 +389,31 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
       return;
     }
 
+    _lastAppCommandTimeMotor1 = DateTime.now();
+
+    if (command == 'START' && _motor2On) {
+      await _publishMqttMessage(_motor2CommandTopic, 'OFF');
+      widget.onLogEvent?.call('Motor 2', 'OFF', 'Interlock');
+      if (mounted) {
+        setState(() {
+          _motor2On = false;
+          _motor2IsManual = false;
+          _motor2Status = 'OFF (Interlock)';
+        });
+      }
+    }
+
+    final bool isStart = command == 'START';
+
     setState(() {
       _motor1PulseActive = true;
+      _motor1On = isStart;
+      _motor1IsManual = false;
+      _motor1Status = isStart ? 'ON (Pulse sent)' : 'OFF (Pulse sent)';
     });
 
     await _publishMqttMessage(_motor1CommandTopic, command);
-    widget.onLogEvent?.call('Motor 1', command == 'START' ? 'ON' : 'OFF', 'Manual');
+    widget.onLogEvent?.call('Motor 1', isStart ? 'ON' : 'OFF', 'Manual');
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
@@ -187,7 +421,6 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
 
     setState(() {
       _motor1PulseActive = false;
-      _motor1Status = '$command (Pulse sent)';
     });
   }
 
@@ -200,12 +433,31 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
       return;
     }
 
+    _lastAppCommandTimeMotor2 = DateTime.now();
+
+    if (command == 'START' && _motor1On) {
+      await _publishMqttMessage(_motor1CommandTopic, 'OFF');
+      widget.onLogEvent?.call('Motor 1', 'OFF', 'Interlock');
+      if (mounted) {
+        setState(() {
+          _motor1On = false;
+          _motor1IsManual = false;
+          _motor1Status = 'OFF (Interlock)';
+        });
+      }
+    }
+
+    final bool isStart = command == 'START';
+
     setState(() {
       _motor2PulseActive = true;
+      _motor2On = isStart;
+      _motor2IsManual = false;
+      _motor2Status = isStart ? 'ON (Pulse sent)' : 'OFF (Pulse sent)';
     });
 
     await _publishMqttMessage(_motor2CommandTopic, command);
-    widget.onLogEvent?.call('Motor 2', command == 'START' ? 'ON' : 'OFF', 'Manual');
+    widget.onLogEvent?.call('Motor 2', isStart ? 'ON' : 'OFF', 'Manual');
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
@@ -213,7 +465,6 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
 
     setState(() {
       _motor2PulseActive = false;
-      _motor2Status = '$command (Pulse sent)';
     });
   }
 
@@ -232,12 +483,14 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
   }
 
   void _showSnackBar(String message) {
-    if (!mounted) return;
+    if (!mounted || !context.mounted) return;
 
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    try {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {}
   }
 
   @override
@@ -247,6 +500,7 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
         _buildMotorCard(
           title: 'Motor 1',
           isOn: _motor1On,
+          isManual: _motor1IsManual,
           statusText: _motor1Status,
           isPulseActive: _motor1PulseActive,
           onToggle: _toggleMotor1Toggle,
@@ -257,6 +511,7 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
         _buildMotorCard(
           title: 'Motor 2',
           isOn: _motor2On,
+          isManual: _motor2IsManual,
           statusText: _motor2Status,
           isPulseActive: _motor2PulseActive,
           onToggle: _toggleMotor2Toggle,
@@ -270,6 +525,7 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
   Widget _buildMotorCard({
     required String title,
     required bool isOn,
+    required bool isManual,
     required String statusText,
     required bool isPulseActive,
     required VoidCallback onToggle,
@@ -289,7 +545,9 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
           ),
         ],
         border: Border.all(
-          color: isOn ? AppColors.primaryLight : Colors.grey.shade300,
+          color: isOn
+              ? (isManual ? Colors.orange.shade400 : AppColors.primaryLight)
+              : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
@@ -302,13 +560,21 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
                 height: 44,
                 decoration: BoxDecoration(
                   color: isOn
-                      ? AppColors.primaryLight.withValues(alpha: 0.25)
+                      ? (isManual
+                          ? Colors.orange.shade100
+                          : AppColors.primaryLight.withValues(alpha: 0.25))
                       : Colors.grey.shade200,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  Icons.power_settings_new_rounded,
-                  color: isOn ? AppColors.primaryDark : Colors.grey.shade600,
+                  isManual
+                      ? Icons.touch_app_rounded
+                      : Icons.power_settings_new_rounded,
+                  color: isOn
+                      ? (isManual
+                          ? Colors.orange.shade800
+                          : AppColors.primaryDark)
+                      : Colors.grey.shade600,
                   size: 26,
                 ),
               ),
@@ -317,19 +583,60 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (isOn && isManual) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.orange.shade300),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.back_hand_rounded,
+                                  size: 12,
+                                  color: Colors.orange.shade800,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'MANUAL START',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange.shade900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Status: $statusText',
                       style: TextStyle(
                         fontSize: 13,
-                        color: isOn ? AppColors.primaryDark : Colors.grey.shade700,
+                        color: isOn
+                            ? (isManual
+                                ? Colors.orange.shade900
+                                : AppColors.primaryDark)
+                            : Colors.grey.shade700,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -339,7 +646,7 @@ class _MotorControllerWidgetState extends State<MotorControllerWidget> {
               Switch(
                 value: isOn,
                 onChanged: _isConnected ? (_) => onToggle() : null,
-                activeColor: AppColors.primary,
+                activeColor: isManual ? Colors.orange.shade700 : AppColors.primary,
               ),
             ],
           ),

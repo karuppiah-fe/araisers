@@ -12,6 +12,7 @@ class SettingsBottomSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final activeLanguage = ref.watch(localeProvider);
+    final sessionState = ref.watch(sessionProvider);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -52,6 +53,65 @@ class SettingsBottomSheet extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 20),
+
+            // User Info Banner Card
+            Card(
+              elevation: 0,
+              color: AppColors.primary.withValues(alpha: 0.08),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
+              ),
+              child: ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: AppColors.primary,
+                  child: Icon(Icons.person, color: Colors.white),
+                ),
+                title: Text(
+                  sessionState.username ?? 'User',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                subtitle: Text(
+                  'Key: ${sessionState.userKey ?? "Default"}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.edit, color: AppColors.primary),
+                  tooltip: 'Edit Profile',
+                  onPressed: () => _showEditProfileDialog(context, ref),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Edit Profile / Credentials Tile
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.manage_accounts, color: AppColors.primary),
+              ),
+              title: const Text(
+                'Edit Username & Password',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+              subtitle: const Text(
+                'Update credentials in Firebase & device session',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showEditProfileDialog(context, ref),
+            ),
+            const Divider(),
 
             // Language Selector Section
             Text(
@@ -97,7 +157,7 @@ class SettingsBottomSheet extends ConsumerWidget {
                 }).toList(),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
             // Bluetooth Reconfigure Section
             ListTile(
@@ -152,6 +212,106 @@ class SettingsBottomSheet extends ConsumerWidget {
               },
             ),
             const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditProfileDialog(BuildContext context, WidgetRef ref) {
+    final sessionState = ref.read(sessionProvider);
+    final userController = TextEditingController(text: sessionState.username ?? '');
+    final passController = TextEditingController();
+    bool hidePassword = true;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.manage_accounts, color: AppColors.primary),
+              SizedBox(width: 8),
+              Text(
+                'Edit Credentials',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Update your Username/Email and Password in Firebase database.',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: userController,
+                decoration: InputDecoration(
+                  labelText: 'Username / Email',
+                  prefixIcon: const Icon(Icons.person),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passController,
+                obscureText: hidePassword,
+                decoration: InputDecoration(
+                  labelText: 'New Password (Optional)',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(hidePassword ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setState(() => hidePassword = !hidePassword),
+                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                final newUsername = userController.text.trim();
+                final newPassword = passController.text.trim();
+
+                if (newUsername.isEmpty) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Username cannot be empty!'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                  return;
+                }
+
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.of(dialogContext).pop();
+
+                await ref.read(sessionProvider.notifier).updateCredentials(
+                      newUsername: newUsername,
+                      newPassword: newPassword,
+                    );
+
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Credentials updated successfully in Firebase!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+              child: const Text('Save Changes'),
+            ),
           ],
         ),
       ),

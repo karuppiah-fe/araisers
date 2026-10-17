@@ -1,11 +1,11 @@
 {
-    "name": "arisers",
-    "short_name": "arisers",
+    "name": "Arisers",
+    "short_name": "Arisers",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Arisers Smart Irrigation Controller Application.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
